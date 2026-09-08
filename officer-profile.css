@@ -1,0 +1,118 @@
+/* ALEXIOS Mobile - Officer Profile (Personal Information)
+   Additions on top of alexios-ui.css. Read-only officer record. */
+
+/* ── Identity card ──────────────────────────────────────── */
+.aop-id {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 26px 20px 22px;
+  border-radius: 18px;
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(14,165,233,.16), transparent 62%),
+    rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.06);
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+.aop-id > * { flex: 0 0 auto; }
+
+/* Soft ambient glow behind the avatar, replacing the hard cyan ring */
+.aop-avatar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 84px; height: 84px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: linear-gradient(160deg, rgba(56,189,248,.18), rgba(2,6,12,.9));
+  border: 1px solid rgba(180,200,255,.16);
+  box-shadow: 0 0 34px rgba(14,165,233,.22);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 27px; font-weight: 600; letter-spacing: 1px;
+  color: rgba(255,255,255,.94);
+}
+
+.aop-name {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 20px; font-weight: 600; letter-spacing: .2px;
+  color: #fff;
+  text-align: center; text-wrap: balance;
+}
+.aop-role {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: 1.1px;
+  color: var(--text-50, #ffffff80);
+  text-align: center;
+}
+.aop-duty {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+  color: #6ee7b7;
+  background: rgba(16,185,129,.09);
+  border: 1px solid rgba(16,185,129,.24);
+}
+.aop-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16,185,129,.9);
+}
+.aop-joined {
+  font-size: 11px; letter-spacing: .3px;
+  color: var(--text-35, #ffffff59);
+}
+
+/* ── Field groups: one card, hairline dividers ──────────── */
+.aop-group {
+  border-radius: 14px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.055);
+  backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+.aop-field {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 13px 16px;
+}
+.aop-field + .aop-field { border-top: 1px solid rgba(255,255,255,.05); }
+
+.aop-label {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 10px; font-weight: 700; letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--text-35, #ffffff59);
+}
+.aop-value {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 14px; line-height: 1.45;
+  color: var(--text-75, #ffffffbf);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.aop-value[data-empty="true"] { color: var(--text-25, #ffffff40); font-style: italic; }
+
+/* Tappable values (tel: / mailto:) stay visually part of the record */
+a.aop-value {
+  color: var(--blue-bright, #38bdf8);
+  text-decoration: none;
+  width: fit-content;
+}
+a.aop-value:hover { text-decoration: underline; }
+a.aop-value:focus-visible { outline: 2px solid var(--blue-bright,#38bdf8); outline-offset: 3px; border-radius: 3px; }
+
+/* ── Read-only footnote ─────────────────────────────────── */
+.aop-note {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 12px 14px;
+  margin-top: 2px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.02);
+  border: 1px solid rgba(255,255,255,.05);
+  font-size: 11.5px; line-height: 1.55;
+  color: var(--text-35, #ffffff59);
+}
+.aop-note svg { flex: 0 0 auto; margin-top: 1px; color: rgba(180,200,255,.45); }

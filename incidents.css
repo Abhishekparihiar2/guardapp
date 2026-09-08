@@ -1,0 +1,336 @@
+/* ALEXIOS Mobile - Incidents module
+   Additions on top of alexios-ui.css. Severity colours are the only place
+   this module spends saturation; everything else stays on the app's blues. */
+
+/* ── Severity ───────────────────────────────────────────── */
+.ain-sev {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 1px;
+  padding: 3px 7px; border-radius: 5px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.ain-sev[data-sev="Critical"] { color: #fca5a5; background: rgba(220,38,38,.13); border-color: rgba(220,38,38,.34); }
+.ain-sev[data-sev="High"]     { color: #fdba74; background: rgba(251,146,60,.11); border-color: rgba(251,146,60,.30); }
+.ain-sev[data-sev="Medium"]   { color: #fde68a; background: rgba(234,179,8,.10);  border-color: rgba(234,179,8,.26); }
+.ain-sev[data-sev="Low"]      { color: rgba(180,200,255,.7); background: rgba(180,200,255,.06); border-color: rgba(180,200,255,.18); }
+
+/* ── Incident type card ─────────────────────────────────── */
+.ain-type {
+  position: relative;
+  width: 100%;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 14px 14px 18px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.055);
+  backdrop-filter: blur(20px);
+  color: #fff; text-align: left; cursor: pointer;
+  overflow: hidden;
+}
+.ain-type:hover { background: rgba(14,165,233,.07); border-color: var(--glass-border,#0ea5e933); }
+.ain-type:focus-visible { outline: 2px solid var(--blue-bright,#38bdf8); outline-offset: 2px; }
+/* Severity stripe */
+.ain-type::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--ain-stripe, rgba(180,200,255,.3));
+}
+.ain-type[data-sev="Critical"] { --ain-stripe: #dc2626; }
+.ain-type[data-sev="High"]     { --ain-stripe: #fb923c; }
+.ain-type[data-sev="Medium"]   { --ain-stripe: #eab308; }
+.ain-type[data-sev="Low"]      { --ain-stripe: rgba(180,200,255,.35); }
+
+.ain-type-body { flex: 1 1 auto; min-width: 0; }
+.ain-type-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ain-type-name {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 15px; font-weight: 600; letter-spacing: .1px;
+  color: rgba(255,255,255,.94);
+}
+.ain-type-code {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 10px; letter-spacing: .8px; color: var(--text-35,#ffffff59);
+  margin-top: 3px;
+}
+.ain-type-desc {
+  font-size: 12px; line-height: 1.45; color: var(--text-50,#ffffff80);
+  margin-top: 5px;
+}
+
+/* ── Submitted report row ───────────────────────────────── */
+.ain-rep {
+  width: 100%;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.05);
+  color: #fff; text-align: left; cursor: pointer;
+}
+.ain-rep:hover { background: rgba(14,165,233,.06); }
+.ain-rep:focus-visible { outline: 2px solid var(--blue-bright,#38bdf8); outline-offset: 2px; }
+.ain-rep-body { flex: 1 1 auto; min-width: 0; }
+.ain-rep-ref {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 11px; letter-spacing: .7px; color: var(--blue-bright,#38bdf8);
+}
+.ain-rep-sum {
+  font-size: 12.5px; line-height: 1.4; color: var(--text-75,#ffffffbf);
+  margin-top: 3px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ain-rep-when {
+  font-size: 10.5px; color: var(--text-35,#ffffff59); margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sync state */
+.ain-sync {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9px; font-weight: 700; letter-spacing: .9px;
+  padding: 3px 7px; border-radius: 5px; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid transparent;
+}
+.ain-sync[data-state="synced"]  { color: #6ee7b7; background: rgba(16,185,129,.1); border-color: rgba(16,185,129,.26); }
+.ain-sync[data-state="pending"] { color: var(--amber-alert,#fb923c); background: rgba(251,146,60,.1); border-color: rgba(251,146,60,.28); }
+
+/* Offline banner */
+.ain-offline {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 13px; border-radius: 11px;
+  background: rgba(251,146,60,.08);
+  border: 1px solid rgba(251,146,60,.24);
+  color: #fdba74; font-size: 11.5px; line-height: 1.45;
+}
+
+/* ── Form ───────────────────────────────────────────────── */
+.ain-form { display: flex; flex-direction: column; gap: 16px; padding-bottom: 8px; }
+
+.ain-field { display: flex; flex-direction: column; gap: 7px; }
+.ain-label {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 1.1px;
+  text-transform: uppercase; color: rgba(180,200,255,.72);
+  display: flex; align-items: center; gap: 5px;
+}
+.ain-req { color: #f87171; }
+.ain-help { font-size: 11px; line-height: 1.45; color: var(--text-35,#ffffff59); }
+
+.ain-input, .ain-textarea, .ain-select {
+  width: 100%;
+  padding: 12px 13px;
+  border-radius: 11px;
+  background: rgba(2,6,12,.5);
+  border: 1px solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.92);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 14px; line-height: 1.45;
+  outline: none;
+}
+.ain-input::placeholder, .ain-textarea::placeholder { color: var(--text-25,#ffffff40); }
+.ain-input:focus, .ain-textarea:focus, .ain-select:focus {
+  border-color: var(--blue-primary,#0ea5e9);
+  box-shadow: 0 0 0 3px rgba(14,165,233,.14);
+}
+.ain-textarea { min-height: 104px; resize: vertical; }
+.ain-input[type="date"], .ain-input[type="time"], .ain-input[type="datetime-local"] {
+  color-scheme: dark;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 13px;
+}
+.ain-field[data-error="true"] .ain-input,
+.ain-field[data-error="true"] .ain-textarea,
+.ain-field[data-error="true"] .ain-picker,
+.ain-field[data-error="true"] .ain-photos { border-color: rgba(220,38,38,.6); }
+.ain-err {
+  font-size: 11px; color: #fca5a5;
+  display: flex; align-items: center; gap: 5px;
+}
+
+/* Divider field */
+.ain-divider {
+  display: flex; align-items: center; gap: 10px;
+  margin: 4px 0 -4px;
+}
+.ain-divider::after {
+  content: ""; flex: 1 1 auto; height: 1px;
+  background: rgba(255,255,255,.08);
+}
+.ain-divider span {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 10px; font-weight: 700; letter-spacing: 1.3px;
+  text-transform: uppercase; color: var(--text-35,#ffffff59);
+}
+
+/* Picker button (single / multi / site) */
+.ain-picker {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 13px;
+  border-radius: 11px;
+  background: rgba(2,6,12,.5);
+  border: 1px solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.92);
+  font-family: Inter, system-ui, sans-serif; font-size: 14px;
+  text-align: left; cursor: pointer;
+}
+.ain-picker:hover { border-color: var(--glass-border,#0ea5e933); }
+.ain-picker:focus-visible { outline: 2px solid var(--blue-bright,#38bdf8); outline-offset: 2px; }
+.ain-picker[data-empty="true"] { color: var(--text-25,#ffffff40); }
+.ain-picker svg { flex: 0 0 auto; color: rgba(255,255,255,.3); }
+
+/* Option rows inside the picker sheet */
+.ain-opt {
+  width: 100%;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 13px 14px;
+  border-radius: 11px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.05);
+  color: rgba(255,255,255,.9);
+  font-size: 14px; text-align: left; cursor: pointer;
+}
+.ain-opt[data-on="true"] {
+  background: rgba(14,165,233,.11);
+  border-color: rgba(14,165,233,.4);
+  color: #fff;
+}
+.ain-opt-sub { font-size: 11px; color: var(--text-35,#ffffff59); margin-top: 3px; }
+.ain-opt svg { flex: 0 0 auto; color: var(--blue-bright,#38bdf8); }
+.ain-optlist { display: flex; flex-direction: column; gap: 7px; overflow-y: auto; }
+
+/* Checkbox field */
+.ain-check {
+  display: flex; align-items: center; gap: 11px;
+  padding: 12px 13px;
+  border-radius: 11px;
+  background: rgba(2,6,12,.5);
+  border: 1px solid rgba(255,255,255,.08);
+  cursor: pointer;
+  font-size: 14px; color: rgba(255,255,255,.9);
+}
+.ain-box {
+  width: 20px; height: 20px; flex: 0 0 auto;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255,255,255,.22);
+  display: grid; place-items: center;
+  color: transparent;
+}
+.ain-check[data-on="true"] .ain-box {
+  background: var(--blue-primary,#0ea5e9);
+  border-color: var(--blue-primary,#0ea5e9);
+  color: #fff;
+}
+
+/* Photos */
+.ain-photos {
+  border-radius: 11px;
+  border: 1px dashed rgba(255,255,255,.14);
+  background: rgba(2,6,12,.35);
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ain-thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ain-thumb {
+  position: relative; aspect-ratio: 1;
+  border-radius: 9px; overflow: hidden;
+  border: 1px solid rgba(255,255,255,.1);
+  background: #020408;
+}
+.ain-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ain-thumb-x {
+  position: absolute; top: 4px; right: 4px;
+  width: 22px; height: 22px; border-radius: 50%;
+  border: none; cursor: pointer;
+  background: rgba(2,4,8,.82);
+  color: #fca5a5;
+  display: grid; place-items: center;
+}
+.ain-addphoto {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 10px;
+  border-radius: 9px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.09);
+  color: rgba(255,255,255,.8);
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px;
+  cursor: pointer;
+}
+.ain-addphoto:hover { background: rgba(255,255,255,.08); }
+
+/* ── Sticky submit footer ───────────────────────────────── */
+.ain-footer {
+  flex: 0 0 auto;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--muted-border,#ffffff14);
+  background: rgba(3,6,9,.94);
+  backdrop-filter: blur(20px);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.ain-submit {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px; border: none; cursor: pointer;
+  background: linear-gradient(180deg, #0ea5e9, #0284c7);
+  box-shadow: 0 0 20px rgba(14,165,233,.3);
+  color: #fff;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 12px; font-weight: 700; letter-spacing: 1.4px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+}
+.ain-submit:hover { filter: brightness(1.1); }
+.ain-submit[disabled] { opacity: .5; cursor: not-allowed; filter: none; box-shadow: none; }
+.ain-draft {
+  text-align: center; font-size: 10.5px; letter-spacing: .3px;
+  color: var(--text-35,#ffffff59);
+}
+
+/* ── Submitted report view ──────────────────────────────── */
+.ain-done {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 26px 18px;
+  border-radius: 16px;
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(16,185,129,.15), transparent 62%),
+    rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.06);
+  text-align: center;
+}
+.ain-done > * { flex: 0 0 auto; }
+.ain-done-ico {
+  width: 54px; height: 54px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(16,185,129,.12);
+  border: 1px solid rgba(16,185,129,.3);
+  color: #6ee7b7;
+}
+.ain-done-ico[data-state="pending"] {
+  background: rgba(251,146,60,.12);
+  border-color: rgba(251,146,60,.3);
+  color: var(--amber-alert,#fb923c);
+}
+.ain-done-title { font-size: 17px; font-weight: 600; color: #fff; }
+.ain-done-sub { font-size: 12px; line-height: 1.5; color: var(--text-50,#ffffff80); }
+.ain-done-ref {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 13px; letter-spacing: 1px; color: var(--blue-bright,#38bdf8);
+  padding: 8px 14px; border-radius: 8px;
+  background: rgba(2,6,12,.55); border: 1px solid rgba(14,165,233,.18);
+}
+
+/* Read-only answer list */
+.ain-ans { display: flex; flex-direction: column; gap: 4px; padding: 13px 15px; }
+.ain-ans + .ain-ans { border-top: 1px solid rgba(255,255,255,.05); }
+.ain-ans-l {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 10px; font-weight: 700; letter-spacing: 1.1px;
+  text-transform: uppercase; color: var(--text-35,#ffffff59);
+}
+.ain-ans-v {
+  font-size: 14px; line-height: 1.45; color: var(--text-75,#ffffffbf);
+  white-space: pre-line; overflow-wrap: anywhere;
+}
+.ain-ans-v[data-empty="true"] { color: var(--text-25,#ffffff40); font-style: italic; }
