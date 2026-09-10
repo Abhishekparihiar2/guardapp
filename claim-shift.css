@@ -1,0 +1,177 @@
+/* ALEXIOS Mobile — Claim Shift (design only)
+   Static presentation for the Claim Shift tab. Reuses the Tasks date-strip and
+   task-card geometry so the two screens read as one system. No data layer:
+   every value below is design mock-up copy. */
+
+.acs-panel { display: flex; flex-direction: column; padding-bottom: 24px; }
+
+/* ── Date strip ─────────────────────────────────────────── */
+.acs-dates {
+  display: flex; overflow-x: auto; gap: 12px;
+  padding: 4px 16px 20px;
+  scrollbar-width: none;
+}
+.acs-dates::-webkit-scrollbar { display: none; }
+
+.acs-day {
+  position: relative; flex-shrink: 0;
+  min-width: 60px; padding: 12px 0;
+  border-radius: 16px;
+  background: var(--glass-surface, rgba(10,16,28,.8));
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--muted-border, rgba(255,255,255,.08));
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  cursor: pointer;
+  transition: background .2s ease, box-shadow .2s ease, opacity .2s ease;
+}
+.acs-day-name {
+  font-family: "Inter", sans-serif; font-size: 12px; font-weight: 700;
+  color: var(--text-50, rgba(255,255,255,.5));
+}
+.acs-day-num {
+  font-family: "Rajdhani", sans-serif; font-size: 18px; font-weight: 800;
+  color: var(--text-white, #fff);
+}
+.acs-day[data-selected="true"] {
+  background: var(--blue-primary, #0ea5e9);
+  border-color: transparent;
+  backdrop-filter: none;
+  box-shadow: 0 8px 16px rgba(14,165,233,.3);
+}
+.acs-day[data-selected="true"] .acs-day-name { color: var(--text-white, #fff); }
+
+/* Open-shift count. Dimmed days have nothing to claim. */
+.acs-day-count {
+  position: absolute; top: -6px; right: -4px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 9px;
+  background: #fb923c;
+  color: #1a1005;
+  font-family: "Inter", sans-serif; font-size: 10px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 8px rgba(251,146,60,.45);
+}
+.acs-day[data-empty="true"] { opacity: .45; }
+
+/* ── Section label ──────────────────────────────────────── */
+.acs-label {
+  padding: 0 16px; margin-bottom: 12px;
+  color: rgba(255,255,255,.6);
+  font-family: "Inter", sans-serif; font-size: 12px; font-weight: 600;
+}
+.acs-label span { color: rgba(255,255,255,.35); }
+
+/* ── Shift card ─────────────────────────────────────────── */
+.acs-list { display: flex; flex-direction: column; gap: 16px; padding: 0 16px; }
+
+.acs-card {
+  position: relative; overflow: hidden;
+  background: var(--glass-surface, rgba(10,16,28,.8));
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--muted-border, rgba(255,255,255,.08));
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+}
+/* Left accent bar, as on the task cards. */
+.acs-card::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--acs-accent, #fb923c);
+  box-shadow: 0 0 12px var(--acs-accent, #fb923c);
+}
+.acs-card[data-state="urgent"]    { --acs-accent: #dc2626; border-color: rgba(220,38,38,.3); }
+.acs-card[data-state="overtime"]  { --acs-accent: #a78bfa; }
+.acs-card[data-state="requested"] { --acs-accent: #38bdf8; }
+
+.acs-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px;
+}
+.acs-eyebrow {
+  font-family: "Inter", sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase;
+  color: var(--acs-accent, #fb923c);
+  white-space: nowrap;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+.acs-time {
+  font-family: "Inter", sans-serif; font-size: 12px; font-weight: 600;
+  color: var(--text-50, rgba(255,255,255,.5)); white-space: nowrap;
+  flex-shrink: 0;
+}
+.acs-title {
+  font-family: "Inter", sans-serif; font-size: 16px; font-weight: 600;
+  line-height: 1.3; color: #fff; margin-bottom: 14px;
+}
+
+/* ── Chips ──────────────────────────────────────────────── */
+.acs-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.acs-chip {
+  font-family: "Inter", sans-serif; font-size: 11px; font-weight: 600;
+  padding: 5px 9px; border-radius: 7px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.07);
+  color: rgba(255,255,255,.72);
+  white-space: nowrap;
+}
+.acs-chip[data-tone="pay"] {
+  color: #6ee7b7; background: rgba(16,185,129,.11); border-color: rgba(16,185,129,.26);
+}
+/* A requirement the officer does not hold. */
+.acs-chip[data-tone="missing"] {
+  color: rgba(255,255,255,.3); text-decoration: line-through;
+  border-style: dashed;
+}
+
+.acs-req-label {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: 2px;
+  color: rgba(130,155,200,.5);
+  margin-bottom: 8px;
+}
+
+/* ── Action ─────────────────────────────────────────────── */
+.acs-action {
+  width: 100%; padding: 13px 0; border: none; border-radius: 12px;
+  background: linear-gradient(90deg, #38bdf8, #3b82f6);
+  color: #04121f;
+  font-family: "Inter", sans-serif; font-size: 13px; font-weight: 800;
+  letter-spacing: .06em; text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(14,165,233,.28);
+}
+.acs-action[data-variant="pending"] {
+  background: rgba(56,189,248,.12);
+  border: 1px solid rgba(56,189,248,.35);
+  color: #7dd3fc; box-shadow: none;
+}
+.acs-action[data-variant="blocked"] {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.09);
+  color: rgba(255,255,255,.35); box-shadow: none; cursor: not-allowed;
+}
+.acs-withdraw {
+  display: block; width: 100%; margin-top: 10px;
+  background: none; border: none; cursor: pointer;
+  font-family: "Inter", sans-serif; font-size: 11px; font-weight: 600;
+  color: rgba(255,255,255,.4); text-decoration: underline;
+}
+
+/* ── Empty state ────────────────────────────────────────── */
+.acs-empty {
+  display: none; flex-direction: column; align-items: center;
+  gap: 10px; padding: 48px 24px;
+}
+.acs-empty-icon {
+  width: 56px; height: 56px; border-radius: 16px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+  display: flex; align-items: center; justify-content: center;
+}
+.acs-empty-title {
+  font-family: "Inter", sans-serif; font-size: 15px; font-weight: 600; color: #fff;
+}
+.acs-empty-sub {
+  font-family: "Inter", sans-serif; font-size: 12px;
+  color: var(--text-50, rgba(255,255,255,.5)); text-align: center;
+}

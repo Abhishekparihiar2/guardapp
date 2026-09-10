@@ -46,6 +46,7 @@
     done:  '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
     cloud: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8m-4-4 4 4 4-4"/><path d="M20.9 15.3A5 5 0 0 0 18 6h-1.3A8 8 0 1 0 4 14.3"/></svg>',
     spin:  '<svg class="asc-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>',
+    filter:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 3H2l8 9.5V19l4 2v-8.5z"/></svg>',
     off:   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22M16.7 11.1A6 6 0 0 1 19 13M8.5 8.6A10 10 0 0 0 2 13m3.5 3.5A14 14 0 0 1 12 15m0 5h.01"/></svg>'
   };
 
@@ -148,6 +149,84 @@
     }
   ];
 
+  /* ── Seed reports (demo only) ────────────────────────────────
+   * Sample submissions so MY REPORTS shows what filed reports look like rather
+   * than an empty state. Written to the store once, on first run, and only
+   * while the store is empty — a real report the officer files is never
+   * touched. Clear them with AlexiosIncidents.clearDemoReports().
+   * ---------------------------------------------------------------------- */
+
+  var HOUR = 3600 * 1000;
+
+  function agoIso(hours) {
+    return new Date(Date.now() - hours * HOUR).toISOString();
+  }
+
+  function seedReports() {
+    return [
+      {
+        id: "demo-1", reference: "IR-260908-0042", categoryId: "IC-06",
+        createdAt: agoIso(2), status: "synced", demo: true,
+        values: {
+          f1: agoIso(2.4), f2: "Ritz-Carlton Tower B",
+          f3: "Unfamiliar male in dark hooded jacket photographing the staff " +
+              "entrance and camera positions from the far side of the street. " +
+              "Left westbound when approached. No vehicle observed.",
+          f4: "22:40", f5: []
+        }
+      },
+      {
+        id: "demo-2", reference: "IR-260907-0038", categoryId: "IC-03",
+        createdAt: agoIso(27), status: "synced", demo: true,
+        values: {
+          f1: agoIso(27.5), f2: "Harbor Point Logistics",
+          f3: "Loading Dock Door", f4: 2,
+          f5: "Two individuals entered through a dock door propped open by a " +
+              "delivery crew. Both stated they were looking for the courier " +
+              "office. Escorted to the gate house and off site without incident.",
+          f6: "Escorted off site", f7: []
+        }
+      },
+      {
+        id: "demo-3", reference: "IR-260905-0031", categoryId: "IC-04",
+        createdAt: agoIso(74), status: "synced", demo: true,
+        values: {
+          f1: agoIso(74.5), f2: "Meridian Financial Plaza",
+          f3: "Dell laptop and docking station from hot desk 14, floor 12",
+          f4: 1250,
+          f5: "Equipment reported missing at shift handover. Floor was accessed " +
+              "twice overnight on cleaning credentials. Tenant IT notified and " +
+              "the asset tag has been flagged.",
+          f6: true, f7: []
+        }
+      },
+      {
+        id: "demo-4", reference: "IR-260908-0044", categoryId: "IC-05",
+        createdAt: agoIso(0.5), status: "pending", demo: true,
+        values: {
+          f1: agoIso(0.7), f2: "North Perimeter Fence",
+          f3: "Vandalism",
+          f4: "Approximately four metres of mesh cut low to the ground behind " +
+              "the generator compound. No entry beyond the fence line. Temporary " +
+              "barrier in place pending a maintenance callout.",
+          f5: true, f6: []
+        }
+      },
+      {
+        id: "demo-5", reference: "IR-260903-0022", categoryId: "IC-02",
+        createdAt: agoIso(122), status: "synced", demo: true,
+        values: {
+          f1: agoIso(122.3), f2: "Ritz-Carlton Tower B",
+          f3: "Member of public", 
+          f4: "Visitor collapsed in the north lobby shortly after entering. " +
+              "Conscious and breathing throughout. First aid administered until " +
+              "paramedics arrived and took over care.",
+          f5: true, f6: "AMB-4471", f7: []
+        }
+      }
+    ];
+  }
+
   /* ── Local store ───────────────────────────────────────────────────────── */
 
   var Store = (function () {
@@ -176,8 +255,24 @@
         ("0" + (d.getMonth() + 1)).slice(-2) + ("0" + d.getDate()).slice(-2);
       return "IR-" + stamp + "-" + ("000" + n).slice(-4);
     }
+    /* Demo rows, written once. An officer's own reports are never overwritten:
+       we only seed when the store is empty and has not been seeded before. */
+    function seedOnce() {
+      var K_SEEDED = "alexios.incidents.seeded.v1";
+      try {
+        if (localStorage.getItem(K_SEEDED)) return;
+        if (read().length) { localStorage.setItem(K_SEEDED, "1"); return; }
+        write(seedReports());
+        localStorage.setItem(K_SEEDED, "1");
+      } catch (e) { if (!read().length) write(seedReports()); }
+    }
+
     return {
       all: read,
+      seedOnce: seedOnce,
+      clearDemo: function () {
+        write(read().filter(function (r) { return !r.demo; }));
+      },
       byCategory: function (id) {
         return read().filter(function (r) { return r.categoryId === id; });
       },
@@ -394,6 +489,10 @@
 
   /* ── Screen 1: incident types + my reports ─────────────────────────────── */
 
+  /* Which zone the list screen is showing. Module-level so the choice
+     survives opening a report and coming back. */
+  var listTab = "report";
+
   function screenList() {
     setHeader("Incidents", "Report and review");
     setFooter(null);
@@ -401,71 +500,273 @@
     UI.body.appendChild(el("div", { class: "asc-empty", html: ICON.spin + "<div>Loading incident types…</div>" }));
 
     Api.categories().then(function (cats) {
-      UI.body.textContent = "";
-
-      if (!navigator.onLine) {
-        UI.body.appendChild(el("div", { class: "ain-offline" }, [
-          el("span", { html: ICON.off }),
-          el("span", { text: "You're offline. You can still file reports — they'll send when you reconnect." })
-        ]));
-      }
-
-      var active = cats.filter(function (c) { return c.status !== "archived"; });
-
-      UI.body.appendChild(el("div", { class: "asc-section", text: "REPORT AN INCIDENT" }));
-      if (!active.length) {
-        UI.body.appendChild(el("div", {
-          class: "asc-empty",
-          text: "No incident types have been published for your region yet."
-        }));
-      }
-      active.forEach(function (cat) {
-        UI.body.appendChild(el("button", {
-          class: "ain-type", "data-sev": cat.severity,
-          onclick: function () { push(function () { screenForm(cat); }); }
-        }, [
-          el("div", { class: "ain-type-body" }, [
-            el("div", { class: "ain-type-top" }, [
-              el("span", { class: "ain-type-name", text: cat.name }),
-              el("span", { class: "ain-sev", "data-sev": cat.severity, text: cat.severity.toUpperCase() })
-            ]),
-            el("div", { class: "ain-type-code", text: cat.code }),
-            cat.description ? el("div", { class: "ain-type-desc", text: cat.description }) : null
-          ]),
-          el("div", { class: "asc-chev", html: ICON.chev })
-        ]));
-      });
-
-      // Zone 2 — this officer's reports, grouped under the type they belong to
-      var mine = Store.all();
-      UI.body.appendChild(el("div", {
-        class: "asc-section",
-        text: "MY REPORTS" + (mine.length ? " · " + mine.length : "")
-      }));
-
-      if (!mine.length) {
-        UI.body.appendChild(el("div", {
-          class: "asc-empty",
-          text: "You haven't filed any incident reports. Choose a type above to start one."
-        }));
-        return;
-      }
-
-      active.forEach(function (cat) {
-        var rows = mine.filter(function (r) { return r.categoryId === cat.id; });
-        if (!rows.length) return;
-        UI.body.appendChild(el("div", {
-          class: "ain-divider"
-        }, [el("span", { text: cat.name + " · " + rows.length })]));
-        rows.forEach(function (rep) {
-          UI.body.appendChild(reportRow(rep, cat));
-        });
-      });
+      renderList(cats.filter(function (c) { return c.status !== "archived"; }));
     }).catch(function (e) {
       UI.body.textContent = "";
       UI.body.appendChild(el("div", { class: "asc-empty", text: e.message || "Could not load incident types." }));
       UI.body.appendChild(el("button", { class: "asc-btn", "data-kind": "ghost", text: "RETRY", onclick: screenList }));
     });
+  }
+
+  /* Tab strip plus whichever zone is selected. Re-rendered in place on a tab
+     change, so switching tabs never pushes a screen onto the stack. */
+  function renderList(active) {
+    UI.body.textContent = "";
+
+    if (!navigator.onLine) {
+      UI.body.appendChild(el("div", { class: "ain-offline" }, [
+        el("span", { html: ICON.off }),
+        el("span", { text: "You're offline. You can still file reports — they'll send when you reconnect." })
+      ]));
+    }
+
+    var mine = Store.all();
+    var tabs = el("div", { class: "ain-tabs" });
+    [
+      { key: "report", label: "Report an Incident" },
+      { key: "mine", label: "My Reports" + (mine.length ? " · " + mine.length : "") }
+    ].forEach(function (t) {
+      tabs.appendChild(el("button", {
+        class: "ain-tab", "data-on": String(listTab === t.key), text: t.label,
+        onclick: function () {
+          if (listTab === t.key) return;
+          listTab = t.key;
+          renderList(active);
+        }
+      }));
+    });
+    UI.body.appendChild(tabs);
+
+    if (listTab === "report") zoneTypes(active);
+    else zoneReports(active, mine);
+  }
+
+  function zoneTypes(active) {
+    if (!active.length) {
+      UI.body.appendChild(el("div", {
+        class: "asc-empty",
+        text: "No incident types have been published for your region yet."
+      }));
+      return;
+    }
+    active.forEach(function (cat) {
+      UI.body.appendChild(el("button", {
+        class: "ain-type", "data-sev": cat.severity,
+        onclick: function () { push(function () { screenForm(cat); }); }
+      }, [
+        el("div", { class: "ain-type-body" }, [
+          el("div", { class: "ain-type-top" }, [
+            el("div", { class: "ain-type-name", text: cat.name }),
+            el("span", { class: "ain-sev", "data-sev": cat.severity, text: cat.severity.toUpperCase() })
+          ]),
+          el("div", { class: "ain-type-code", text: cat.code }),
+          cat.description ? el("div", { class: "ain-type-desc", text: cat.description }) : null
+        ]),
+        el("div", { class: "asc-chev", html: ICON.chev })
+      ]));
+    });
+  }
+
+  /* ── Date filter ───────────────────────────────────────────────────────
+   * Narrows MY REPORTS to a filed-date range. "all" is the resting state, so
+   * the list looks untouched until the officer asks for a range.
+   * -------------------------------------------------------------------- */
+
+  var PRESETS = [
+    { value: "all",    label: "All dates" },
+    { value: "today",  label: "Today" },
+    { value: "7",      label: "Last 7 days" },
+    { value: "30",     label: "Last 30 days" },
+    { value: "custom", label: "Custom range" }
+  ];
+
+  var reportFilter = { preset: "all", from: "", to: "" };
+
+  function startOfDay(d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+  function endOfDay(d) { var x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
+
+  /* Resolves the filter to [from, to] timestamps, or null for no bound. */
+  function filterRange(f) {
+    var now = new Date();
+    if (f.preset === "today") return [startOfDay(now), endOfDay(now)];
+    if (f.preset === "7" || f.preset === "30") {
+      var days = parseInt(f.preset, 10);
+      var from = startOfDay(new Date(now.getTime() - (days - 1) * 24 * HOUR));
+      return [from, endOfDay(now)];
+    }
+    if (f.preset === "custom") {
+      return [
+        f.from ? startOfDay(new Date(f.from + "T00:00")) : null,
+        f.to ? endOfDay(new Date(f.to + "T00:00")) : null
+      ];
+    }
+    return [null, null];
+  }
+
+  function filterActive(f) {
+    if (f.preset === "all") return false;
+    if (f.preset === "custom") return !!(f.from || f.to);
+    return true;
+  }
+
+  function applyFilter(list, f) {
+    if (!filterActive(f)) return list;
+    var r = filterRange(f), from = r[0], to = r[1];
+    return list.filter(function (rep) {
+      var t = new Date(rep.createdAt);
+      if (isNaN(t)) return false;
+      if (from && t < from) return false;
+      if (to && t > to) return false;
+      return true;
+    });
+  }
+
+  function filterLabel(f) {
+    if (!filterActive(f)) return "All dates";
+    if (f.preset === "custom") {
+      /* yyyy-mm-dd (input value) -> mm/dd/yyyy */
+      var d = function (v) {
+        if (!v) return "";
+        var p = v.split("-");
+        return p[1] + "/" + p[2] + "/" + p[0];
+      };
+      if (f.from && f.to) return d(f.from) + " – " + d(f.to);
+      return f.from ? "From " + d(f.from) : "Until " + d(f.to);
+    }
+    for (var i = 0; i < PRESETS.length; i++) {
+      if (PRESETS[i].value === f.preset) return PRESETS[i].label;
+    }
+    return "All dates";
+  }
+
+  function zoneReports(active, mine) {
+    if (!mine.length) {
+      UI.body.appendChild(el("div", {
+        class: "asc-empty",
+        text: "You haven't filed any incident reports. Pick a type on the Report an Incident tab to start one."
+      }));
+      return;
+    }
+
+    var shown = applyFilter(mine, reportFilter);
+    var on = filterActive(reportFilter);
+
+    UI.body.appendChild(el("div", { class: "ain-toolbar" }, [
+      el("div", { class: "ain-toolbar-sum" }, [
+        el("span", {
+          text: on ? shown.length + " of " + mine.length + " reports"
+                   : mine.length + " reports"
+        }),
+        el("span", { class: "ain-toolbar-range", text: filterLabel(reportFilter) })
+      ]),
+      el("button", {
+        class: "ain-filter", "data-on": String(on), type: "button",
+        "aria-label": "Filter reports by date",
+        html: ICON.filter + "<span>Filter</span>",
+        onclick: function () { openDateFilter(active); }
+      })
+    ]));
+
+    if (!shown.length) {
+      UI.body.appendChild(el("div", {
+        class: "asc-empty",
+        text: "No reports filed in this date range."
+      }));
+      UI.body.appendChild(el("button", {
+        class: "asc-btn", "data-kind": "ghost", text: "CLEAR FILTER",
+        onclick: function () {
+          reportFilter = { preset: "all", from: "", to: "" };
+          renderList(active);
+        }
+      }));
+      return;
+    }
+
+    active.forEach(function (cat) {
+      var rows = shown.filter(function (r) { return r.categoryId === cat.id; });
+      if (!rows.length) return;
+      UI.body.appendChild(el("div", { class: "ain-divider" }, [
+        el("span", { text: cat.name + " · " + rows.length })
+      ]));
+      rows.forEach(function (rep) {
+        UI.body.appendChild(reportRow(rep, cat));
+      });
+    });
+  }
+
+  function openDateFilter(active) {
+    var draft = {
+      preset: reportFilter.preset,
+      from: reportFilter.from,
+      to: reportFilter.to
+    };
+
+    var scrim = el("div", { class: "asc-scrim" });
+    function close() {
+      scrim.dataset.open = "false";
+      setTimeout(function () { scrim.remove(); }, 260);
+    }
+
+    var list = el("div", { class: "ain-optlist" });
+    var custom = el("div", { class: "ain-daterow" });
+
+    function paintCustom() {
+      custom.hidden = draft.preset !== "custom";
+      if (custom.hidden) return;
+      custom.textContent = "";
+      [["from", "From"], ["to", "To"]].forEach(function (pair) {
+        var key = pair[0];
+        var input = el("input", { class: "ain-input", type: "date", value: draft[key] || "" });
+        input.addEventListener("change", function () { draft[key] = input.value; });
+        custom.appendChild(el("label", { class: "ain-datefield" }, [
+          el("span", { class: "ain-label", text: pair[1] }),
+          input
+        ]));
+      });
+    }
+
+    function paint() {
+      list.textContent = "";
+      PRESETS.forEach(function (p) {
+        var sel = draft.preset === p.value;
+        list.appendChild(el("button", {
+          class: "ain-opt", "data-on": String(sel), type: "button",
+          onclick: function () { draft.preset = p.value; paint(); paintCustom(); }
+        }, [
+          el("span", {}, [el("div", { text: p.label })]),
+          sel ? el("span", { html: ICON.check }) : null
+        ]));
+      });
+    }
+    paint();
+    paintCustom();
+
+    scrim.appendChild(el("div", { class: "asc-sheet" }, [
+      el("div", { class: "asc-sheet-title", text: "Filter by date" }),
+      list,
+      custom,
+      el("div", { class: "asc-actions" }, [
+        el("button", {
+          class: "asc-btn", "data-kind": "ghost", text: "CLEAR",
+          onclick: function () {
+            reportFilter = { preset: "all", from: "", to: "" };
+            close();
+            renderList(active);
+          }
+        }),
+        el("button", {
+          class: "asc-btn", "data-kind": "primary", text: "APPLY",
+          onclick: function () {
+            reportFilter = draft;
+            close();
+            renderList(active);
+          }
+        })
+      ])
+    ]));
+
+    UI.overlay.appendChild(scrim);
+    setTimeout(function () { scrim.dataset.open = "true"; }, 16);
   }
 
   function summaryOf(rep, cat) {
@@ -947,7 +1248,9 @@
   /* ── Offline queue ─────────────────────────────────────────────────────── */
 
   function flushQueue() {
-    var pending = Store.all().filter(function (r) { return r.status === "pending"; });
+    var pending = Store.all().filter(function (r) {
+      return r.status === "pending" && !r.demo;   // demo rows keep their state
+    });
     if (!pending.length || !navigator.onLine) return;
 
     var sent = 0;
@@ -985,6 +1288,7 @@
   }
 
   function open() {
+    Store.seedOnce();
     build();
     syncRect();
     UI.stack = [];
@@ -1018,6 +1322,7 @@
     configure: function (o) { Object.assign(CONFIG, o || {}); return CONFIG; },
     open: open,
     flush: flushQueue,
+    clearDemoReports: function () { Store.clearDemo(); },
     reset: function () {
       try {
         Object.keys(localStorage)

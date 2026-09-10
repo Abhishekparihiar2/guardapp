@@ -334,3 +334,77 @@
   white-space: pre-line; overflow-wrap: anywhere;
 }
 .ain-ans-v[data-empty="true"] { color: var(--text-25,#ffffff40); font-style: italic; }
+
+/* ── List tabs (Report an Incident / My Reports) ─────────── */
+.ain-tabs {
+  display: flex;
+  gap: 0;
+  background: rgba(0,0,0,.4);
+  border: 1px solid rgba(255,255,255,.05);
+  border-radius: 12px;
+  padding: 4px;
+  margin: 4px 0 14px;
+}
+.ain-tab {
+  flex: 1;
+  padding: 9px 2px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255,255,255,.4);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 11px; font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .2s ease, color .2s ease;
+}
+.ain-tab[data-on="true"] {
+  background: rgba(255,255,255,.1);
+  color: #fff;
+}
+
+/* ── My Reports toolbar + date filter ────────────────────── */
+.ain-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  margin: 2px 0 12px;
+}
+.ain-toolbar-sum {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+}
+.ain-toolbar-sum > span:first-child {
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px; font-weight: 600; color: rgba(255,255,255,.6);
+}
+.ain-toolbar-range {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: 1.2px; text-transform: uppercase;
+  color: rgba(130,155,200,.55);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.ain-filter {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.09);
+  color: rgba(255,255,255,.7);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px; font-weight: 600;
+  cursor: pointer;
+}
+.ain-filter:hover { background: rgba(255,255,255,.07); }
+/* A filter is on — say so, don't make them open the sheet to find out. */
+.ain-filter[data-on="true"] {
+  background: rgba(14,165,233,.14);
+  border-color: rgba(56,189,248,.42);
+  color: #7dd3fc;
+}
+
+.ain-daterow { display: flex; gap: 10px; }
+.ain-datefield { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+.ain-datefield .ain-input { width: 100%; }
+/* Dark-scheme the native date picker indicator */
+.ain-datefield input[type="date"] { color-scheme: dark; }

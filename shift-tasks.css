@@ -1,0 +1,361 @@
+/* ALEXIOS Mobile — Shift Tasks section (design only)
+   The Tasks screen is split into SHIFT TASKS (pinned first) and OTHER TASKS.
+   Shift work runs on a teal accent so it reads as a different class of work
+   from the sky-blue used by everything else in the app. */
+
+:root {
+  --ash-teal: #2DD4BF;
+  --ash-teal-deep: #14B8A6;
+}
+
+/* ── Section headers ────────────────────────────────────── */
+.ash-block { padding: 0 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.ash-head {
+  display: flex; align-items: center; gap: 9px;
+  margin-top: 2px;
+}
+.ash-head-t {
+  font-family: "Rajdhani", sans-serif; font-weight: 700;
+  font-size: 12px; letter-spacing: .2em; text-transform: uppercase;
+  color: rgba(255,255,255,.75);
+  white-space: nowrap;
+}
+.ash-head[data-tone="shift"] .ash-head-t { color: var(--ash-teal); }
+.ash-head-rule {
+  flex: 1; height: 1px;
+  background: rgba(255,255,255,.09);
+}
+.ash-head[data-tone="shift"] .ash-head-rule {
+  background: linear-gradient(90deg, rgba(45,212,191,.4), rgba(45,212,191,0));
+}
+.ash-head-n {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 10px; color: rgba(255,255,255,.35);
+}
+
+/* Spacing before OTHER TASKS, which sits above the bundle's own list */
+.ash-head[data-tone="other"] { margin-top: 10px; margin-bottom: -2px; }
+
+/* ── Shift task card ────────────────────────────────────── */
+.ash-card {
+  position: relative; overflow: hidden;
+  width: 100%; text-align: left;
+  padding: 20px;
+  border-radius: 20px;
+  background:
+    linear-gradient(135deg, rgba(45,212,191,.10), rgba(20,184,166,.03)),
+    rgba(8,20,22,.85);
+  border: 1px solid rgba(45,212,191,.3);
+  box-shadow: 0 4px 22px rgba(0,0,0,.28), 0 0 26px rgba(45,212,191,.07);
+  cursor: pointer; color: inherit;
+}
+.ash-card::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: linear-gradient(180deg, var(--ash-teal), var(--ash-teal-deep));
+  box-shadow: 0 0 14px rgba(45,212,191,.6);
+}
+
+.ash-card-top {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px;
+}
+.ash-eyebrow {
+  font-family: "Rajdhani", sans-serif; font-weight: 700;
+  font-size: 10px; letter-spacing: .15em; text-transform: uppercase;
+  color: var(--ash-teal);
+  white-space: nowrap;
+}
+.ash-time {
+  font-family: "Inter", sans-serif; font-size: 12px; font-weight: 600;
+  color: rgba(255,255,255,.5); white-space: nowrap; flex-shrink: 0;
+}
+.ash-title {
+  font-family: "Inter", sans-serif; font-size: 17px; font-weight: 600;
+  color: #fff; line-height: 1.3;
+}
+.ash-site {
+  margin-top: 5px;
+  font-family: "Inter", sans-serif; font-size: 13px;
+  color: rgba(255,255,255,.45);
+}
+
+/* Progress */
+.ash-prog { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.ash-prog-bar {
+  flex: 1; height: 5px; border-radius: 3px;
+  background: rgba(255,255,255,.09); overflow: hidden;
+}
+.ash-prog-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--ash-teal), var(--ash-teal-deep));
+  box-shadow: 0 0 10px rgba(45,212,191,.65);
+  transition: width .3s ease;
+}
+.ash-prog-n {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 11px; font-weight: 700; color: rgba(45,212,191,.9);
+  white-space: nowrap;
+}
+
+.ash-card-go {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-top: 16px; padding-top: 14px;
+  border-top: 1px solid rgba(45,212,191,.16);
+}
+.ash-card-hint {
+  font-family: "Inter", sans-serif; font-size: 11.5px;
+  color: rgba(255,255,255,.4);
+}
+.ash-card-chev { color: rgba(45,212,191,.8); display: flex; }
+
+/* ── Detail overlay ─────────────────────────────────────── */
+.ash-overlay {
+  position: fixed; inset: 0; z-index: 310;
+  background: #04100f;
+  display: flex; flex-direction: column;
+  opacity: 0; pointer-events: none;
+  transition: opacity .22s ease;
+}
+.ash-overlay[data-open="true"] { opacity: 1; pointer-events: auto; }
+
+.ash-ov-head {
+  flex: 0 0 auto;
+  padding: 14px 16px 13px;
+  border-bottom: 1px solid rgba(45,212,191,.16);
+  background: rgba(4,18,17,.96);
+  display: flex; align-items: center; gap: 12px;
+}
+.ash-back {
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: 11px;
+  border: 1px solid rgba(45,212,191,.26);
+  background: rgba(45,212,191,.07);
+  color: var(--ash-teal);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.ash-ov-txt { flex: 1; min-width: 0; text-align: center; }
+.ash-ov-t {
+  font-family: "Rajdhani", sans-serif; font-weight: 700;
+  font-size: 15px; letter-spacing: .18em; text-transform: uppercase; color: #fff;
+}
+.ash-ov-s {
+  margin-top: 2px;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(45,212,191,.6);
+}
+.ash-ov-sp { width: 36px; flex-shrink: 0; }
+
+.ash-ov-body {
+  flex: 1 1 auto; overflow-y: auto;
+  padding: 18px 16px 26px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.ash-ov-body > * { flex: 0 0 auto; }
+
+.ash-label {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(45,212,191,.55);
+}
+
+/* Shift details block */
+.ash-details {
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(45,212,191,.08), rgba(20,184,166,.02)),
+    rgba(8,20,22,.8);
+  border: 1px solid rgba(45,212,191,.24);
+  overflow: hidden;
+}
+.ash-det-hd {
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid rgba(45,212,191,.14);
+}
+.ash-det-site {
+  font-family: "Inter", sans-serif; font-size: 17px; font-weight: 700; color: #fff;
+}
+.ash-det-post {
+  margin-top: 4px;
+  font-family: "Inter", sans-serif; font-size: 13px; color: rgba(255,255,255,.5);
+}
+.ash-det-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 11px;
+  padding: 5px 10px; border-radius: 20px;
+  background: rgba(45,212,191,.13);
+  border: 1px solid rgba(45,212,191,.34);
+  color: var(--ash-teal);
+  font-family: "Inter", sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: .5px; text-transform: uppercase;
+}
+.ash-det-badge::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ash-teal); box-shadow: 0 0 8px var(--ash-teal);
+}
+
+.ash-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+}
+.ash-cell {
+  padding: 13px 16px;
+  border-top: 1px solid rgba(255,255,255,.05);
+  min-width: 0;
+}
+/* Short fields pair two-per-row; everything else spans the width. */
+.ash-cell[data-half="false"] { grid-column: 1 / -1; }
+.ash-cell[data-divide="true"] {
+  border-right: 1px solid rgba(255,255,255,.05);
+}
+.ash-cell-l {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 8.5px; letter-spacing: 1.5px; text-transform: uppercase;
+  color: rgba(130,155,200,.5); margin-bottom: 5px;
+}
+.ash-cell-v {
+  font-family: "Inter", sans-serif; font-size: 14px; font-weight: 600;
+  color: #fff; line-height: 1.3;
+}
+
+/* Task rows with completion toggles */
+.ash-tasks {
+  border-radius: 18px;
+  background: rgba(8,20,22,.7);
+  border: 1px solid rgba(45,212,191,.18);
+  overflow: hidden;
+}
+.ash-task {
+  display: flex; align-items: flex-start; gap: 13px;
+  width: 100%; text-align: left;
+  padding: 15px 16px;
+  background: none; border: none; cursor: pointer; color: inherit;
+}
+.ash-task + .ash-task { border-top: 1px solid rgba(255,255,255,.05); }
+.ash-box {
+  width: 23px; height: 23px; flex-shrink: 0; margin-top: 1px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(255,255,255,.22);
+  display: flex; align-items: center; justify-content: center;
+  color: transparent;
+}
+.ash-task[data-done="true"] .ash-box {
+  background: var(--ash-teal); border-color: var(--ash-teal); color: #04211d;
+  box-shadow: 0 0 12px rgba(45,212,191,.45);
+}
+.ash-task-main { flex: 1; min-width: 0; }
+.ash-task-t {
+  font-family: "Inter", sans-serif; font-size: 14.5px; font-weight: 600;
+  color: #fff; line-height: 1.35;
+}
+.ash-task[data-done="true"] .ash-task-t {
+  color: rgba(255,255,255,.4); text-decoration: line-through;
+}
+.ash-task-s {
+  margin-top: 3px;
+  font-family: "Inter", sans-serif; font-size: 12px; color: rgba(255,255,255,.42);
+}
+.ash-task-time {
+  flex-shrink: 0; padding-top: 2px;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 10px; color: rgba(255,255,255,.38); white-space: nowrap;
+}
+
+/* Footer */
+.ash-ov-foot {
+  flex: 0 0 auto;
+  padding: 12px 16px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(45,212,191,.16);
+  background: rgba(4,18,17,.96);
+}
+.ash-done-btn {
+  width: 100%; padding: 15px 0;
+  border: none; border-radius: 14px;
+  background: linear-gradient(135deg, var(--ash-teal) 0%, var(--ash-teal-deep) 100%);
+  color: #04211d;
+  font-family: "Inter", sans-serif; font-size: 14px; font-weight: 800;
+  letter-spacing: .04em; text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(20,184,166,.28);
+}
+.ash-done-btn[data-disabled="true"] {
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.28);
+  box-shadow: none; cursor: not-allowed;
+}
+.ash-foot-hint {
+  margin-top: 9px; text-align: center;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: 1.3px; text-transform: uppercase;
+  color: rgba(255,255,255,.28);
+}
+
+/* Yes / No fields — All day, Enable users to claim this shift */
+.ash-bool {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 20px;
+  font-family: "Inter", sans-serif; font-size: 11px; font-weight: 700;
+  letter-spacing: .4px; text-transform: uppercase;
+  color: rgba(255,255,255,.42);
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.1);
+}
+.ash-bool::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(255,255,255,.3);
+}
+.ash-bool[data-on="true"] {
+  color: var(--ash-teal);
+  background: rgba(45,212,191,.13);
+  border-color: rgba(45,212,191,.34);
+}
+.ash-bool[data-on="true"]::before {
+  background: var(--ash-teal); box-shadow: 0 0 8px var(--ash-teal);
+}
+
+/* ── Description / instructions ─────────────────────────── */
+.ash-desc {
+  border-radius: 18px;
+  background: rgba(8,20,22,.7);
+  border: 1px solid rgba(45,212,191,.18);
+  padding: 16px;
+}
+.ash-desc-p {
+  margin: 0;
+  font-family: "Inter", sans-serif; font-size: 13.5px; line-height: 1.6;
+  color: rgba(255,255,255,.72);
+}
+
+/* Attached file with a download control */
+.ash-file {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 15px; padding: 12px 13px;
+  border-radius: 13px;
+  background: rgba(45,212,191,.06);
+  border: 1px solid rgba(45,212,191,.24);
+}
+.ash-file-ico { flex-shrink: 0; color: rgba(45,212,191,.8); display: flex; }
+.ash-file-main { flex: 1; min-width: 0; }
+.ash-file-n {
+  font-family: "Inter", sans-serif; font-size: 13px; font-weight: 600;
+  color: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ash-file-m {
+  margin-top: 2px;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: 1px; text-transform: uppercase;
+  color: rgba(255,255,255,.35);
+}
+.ash-file-dl {
+  flex-shrink: 0;
+  width: 38px; height: 38px;
+  border-radius: 11px;
+  border: 1px solid rgba(45,212,191,.34);
+  background: rgba(45,212,191,.12);
+  color: var(--ash-teal);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.ash-file-dl:hover { background: rgba(45,212,191,.2); }

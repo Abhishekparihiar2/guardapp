@@ -1,0 +1,243 @@
+/* ALEXIOS Mobile — Task status + Late/Missed reasoning matrix (design only)
+   Status pills sit in a footer strip appended to each task card, so the
+   bundle's own card layout is left untouched. */
+
+/* ── Card footer strip ──────────────────────────────────── */
+.ats-foot {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  margin-top: 14px; padding-top: 13px;
+  border-top: 1px solid rgba(255,255,255,.06);
+}
+
+.ats-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border-radius: 20px;
+  font-family: "Inter", sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: .5px; text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--ats-tone, #94a3b8);
+  background: color-mix(in srgb, var(--ats-tone, #94a3b8) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ats-tone, #94a3b8) 30%, transparent);
+}
+.ats-pill::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ats-tone, #94a3b8);
+  box-shadow: 0 0 8px var(--ats-tone, #94a3b8);
+}
+.ats-pill[data-s="new"]         { --ats-tone: #A78BFA; }
+.ats-pill[data-s="in progress"] { --ats-tone: #38BDF8; }
+.ats-pill[data-s="completed"]   { --ats-tone: #10B981; }
+.ats-pill[data-s="overdue"]     { --ats-tone: #F87171; }
+.ats-pill[data-s="late"]        { --ats-tone: #FBBF24; }
+.ats-pill[data-s="missed"]      { --ats-tone: #DC2626; }
+.ats-pill[data-s="submitted"]   { --ats-tone: #7DD3FC; }
+
+/* Who flagged it, and when — this came from a person, not a timer. */
+.ats-flag {
+  font-family: "Inter", sans-serif; font-size: 11px;
+  color: rgba(255,255,255,.38);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.ats-act {
+  width: 100%; margin-top: 4px; padding: 11px 0;
+  border-radius: 11px; cursor: pointer;
+  background: rgba(251,146,60,.12);
+  border: 1px solid rgba(251,146,60,.4);
+  color: #fdba74;
+  font-family: "Inter", sans-serif; font-size: 12px; font-weight: 800;
+  letter-spacing: .06em; text-transform: uppercase;
+}
+
+/* ── Home banner ────────────────────────────────────────── */
+.ats-banner {
+  display: flex; align-items: center; gap: 11px;
+  margin: 0 0 14px; padding: 13px 14px;
+  border-radius: 14px;
+  background: rgba(251,146,60,.11);
+  border: 1px solid rgba(251,146,60,.36);
+  cursor: pointer;
+  box-shadow: 0 0 22px rgba(251,146,60,.12);
+}
+.ats-banner-ico { flex-shrink: 0; color: #fbbf24; display: flex; }
+.ats-banner-txt { flex: 1; min-width: 0; }
+.ats-banner-t {
+  font-family: "Inter", sans-serif; font-size: 13px; font-weight: 700;
+  color: #fdba74;
+}
+.ats-banner-s {
+  margin-top: 2px;
+  font-family: "Inter", sans-serif; font-size: 11.5px;
+  color: rgba(255,255,255,.45);
+}
+.ats-banner-go { flex-shrink: 0; color: rgba(253,186,116,.7); display: flex; }
+
+/* ── Lock screen ────────────────────────────────────────── */
+.ats-lock {
+  position: fixed; inset: 0; z-index: 320;
+  background: #0a0704;
+  display: flex; flex-direction: column;
+  opacity: 0; pointer-events: none;
+  transition: opacity .22s ease;
+}
+.ats-lock[data-open="true"] { opacity: 1; pointer-events: auto; }
+
+.ats-lock-head {
+  flex: 0 0 auto;
+  padding: 20px 18px 16px;
+  border-bottom: 1px solid rgba(251,146,60,.18);
+  background: rgba(20,12,4,.9);
+  text-align: center;
+}
+.ats-lock-ico {
+  width: 46px; height: 46px; margin: 0 auto 11px;
+  border-radius: 50%;
+  background: rgba(251,146,60,.13);
+  border: 1px solid rgba(251,146,60,.42);
+  display: flex; align-items: center; justify-content: center;
+  color: #fbbf24;
+  box-shadow: 0 0 24px rgba(251,146,60,.2);
+}
+.ats-lock-t {
+  font-family: "Rajdhani", sans-serif; font-weight: 700;
+  font-size: 17px; letter-spacing: .16em; text-transform: uppercase; color: #fff;
+}
+.ats-lock-s {
+  margin-top: 5px;
+  font-family: "Inter", sans-serif; font-size: 12.5px; line-height: 1.5;
+  color: rgba(255,255,255,.5);
+}
+
+.ats-lock-body {
+  flex: 1 1 auto; overflow-y: auto;
+  padding: 18px 16px 22px;
+  display: flex; flex-direction: column; gap: 13px;
+}
+.ats-lock-body > * { flex: 0 0 auto; }
+
+/* The activity being explained */
+.ats-subject {
+  padding: 15px;
+  border-radius: 15px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.08);
+}
+.ats-subject-top {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 9px;
+}
+.ats-kind {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: 1.4px; text-transform: uppercase;
+  color: rgba(130,155,200,.6);
+}
+.ats-subject-t {
+  font-family: "Inter", sans-serif; font-size: 15px; font-weight: 600;
+  color: #fff; line-height: 1.35;
+}
+.ats-subject-m {
+  margin-top: 6px;
+  font-family: "Inter", sans-serif; font-size: 12px;
+  color: rgba(255,255,255,.42); line-height: 1.5;
+}
+
+.ats-label {
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: rgba(130,155,200,.5);
+  margin-top: 2px;
+}
+
+/* Reason options */
+.ats-opt {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; text-align: left;
+  padding: 15px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.09);
+  color: rgba(255,255,255,.8);
+  font-family: "Inter", sans-serif; font-size: 14px; font-weight: 600;
+  cursor: pointer;
+}
+.ats-opt[data-on="true"] {
+  background: rgba(251,146,60,.11);
+  border-color: rgba(251,146,60,.45);
+  color: #fdba74;
+}
+.ats-radio {
+  width: 20px; height: 20px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,.24);
+  display: flex; align-items: center; justify-content: center;
+}
+.ats-opt[data-on="true"] .ats-radio { border-color: #fbbf24; }
+.ats-opt[data-on="true"] .ats-radio::after {
+  content: ""; width: 10px; height: 10px; border-radius: 50%;
+  background: #fbbf24; box-shadow: 0 0 8px rgba(251,191,36,.7);
+}
+
+.ats-other { display: flex; flex-direction: column; gap: 7px; }
+.ats-textarea {
+  width: 100%; min-height: 104px; resize: none;
+  padding: 13px; border-radius: 12px;
+  background: rgba(2,6,12,.55);
+  border: 1px solid rgba(255,255,255,.1);
+  color: rgba(255,255,255,.92);
+  font-family: "Inter", sans-serif; font-size: 14px; line-height: 1.5;
+}
+.ats-textarea::placeholder { color: rgba(255,255,255,.26); }
+.ats-req {
+  font-family: "Inter", sans-serif; font-size: 11px;
+  color: rgba(251,146,60,.75);
+}
+
+.ats-lock-foot {
+  flex: 0 0 auto;
+  padding: 12px 16px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255,255,255,.07);
+  background: rgba(20,12,4,.9);
+}
+.ats-submit {
+  width: 100%; padding: 15px 0;
+  border: none; border-radius: 14px;
+  background: linear-gradient(135deg, #FBBF24 0%, #F97316 100%);
+  color: #1a1005;
+  font-family: "Inter", sans-serif; font-size: 14px; font-weight: 800;
+  letter-spacing: .04em; text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(249,115,22,.28);
+}
+.ats-submit[data-disabled="true"] {
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.28);
+  box-shadow: none; cursor: not-allowed;
+}
+.ats-lock-hint {
+  margin-top: 9px; text-align: center;
+  font-family: "DM Mono", ui-monospace, monospace;
+  font-size: 9px; letter-spacing: 1.3px; text-transform: uppercase;
+  color: rgba(255,255,255,.28);
+}
+
+/* Sent confirmation */
+.ats-sent {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 13px;
+  padding: 40px 30px; text-align: center;
+}
+.ats-sent-ico {
+  width: 70px; height: 70px; border-radius: 50%;
+  background: rgba(56,189,248,.11);
+  border: 1px solid rgba(56,189,248,.4);
+  display: flex; align-items: center; justify-content: center;
+  color: #38bdf8;
+  box-shadow: 0 0 30px rgba(56,189,248,.2);
+}
+.ats-sent-t {
+  font-family: "Rajdhani", sans-serif; font-size: 20px; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase; color: #fff;
+}
+.ats-sent-s {
+  font-family: "Inter", sans-serif; font-size: 13px; line-height: 1.55;
+  color: rgba(255,255,255,.5); max-width: 258px;
+}
