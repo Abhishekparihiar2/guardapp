@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Guard Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!--
+    ALEXIOS admin — live guard map (reference page for the CRM).
+
+      1. POST /api/v1/auth/login                      → accessToken (no cookie: credentials "omit")
+      2. GET  /api/v1/dashboard/live-map              → guards on duty + their last point, and the channel
+      3. Socket.IO (path /socket.io, auth.token)      → emit "subscribe" <channel>
+      4. "event" { payload: { type, guard } }         → guard.location moves a marker,
+                                                        guard.status adds / updates / removes one
+
+    Needs an account with the Dashboard module. Served by the guard app's dev server
+    so /api and /socket.io are proxied to the API.
+  -->
+  <style>
+    :root {
+      --bg: #f4f6fa; --panel: #ffffff; --line: #e3e7ef; --text: #111827; --muted: #6b7280;
+      --duty: #16a34a; --break: #d97706; --stale: #9ca3af; --accent: #2563eb; --danger: #dc2626;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #0b1220; --panel: #111a2c; --line: #1f2a40; --text: #e5e7eb; --muted: #94a3b8; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+    header h1 { margin: 0; font-size: 16px; font-weight: 650; }
+    .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    .conn::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--stale); }
+    .conn[data-live="true"]::before { background: var(--duty); box-shadow: 0 0 0 3px rgba(22,163,74,.2); }
+    .grow { flex: 1; }
+    button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--text); padding: 6px 12px; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    main { display: grid; grid-template-columns: 320px 1fr; height: calc(100vh - 53px); }
+    aside { border-right: 1px solid var(--line); background: var(--panel); overflow: auto; }
+    .summary { padding: 12px 16px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+    .guard { display: block; width: 100%; text-align: left; padding: 12px 16px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; }
+    .guard:hover, .guard[data-selected="true"] { background: rgba(37,99,235,.07); }
+    .guard-top { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--stale); }
+    .dot[data-state="on_duty"] { background: var(--duty); }
+    .dot[data-state="on_break"] { background: var(--break); }
+    .dot[data-stale="true"] { background: var(--stale); }
+    .guard-sub { margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .empty { padding: 24px 16px; color: var(--muted); }
+    #map { height: 100%; }
+    .login { max-width: 360px; margin: 10vh auto; padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+    .login h2 { margin: 0 0 4px; font-size: 18px; }
+    .login p { margin: 0 0 16px; color: var(--muted); }
+    .login label { display: block; margin: 10px 0 4px; font-size: 12px; color: var(--muted); }
+    .login input { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+    .login button { width: 100%; margin-top: 16px; padding: 10px; }
+    .error { margin-top: 12px; color: var(--danger); font-size: 13px; min-height: 18px; }
+    .popup b { display: block; margin-bottom: 2px; }
+    [hidden] { display: none !important; }
+    @media (max-width: 760px) {
+      main { grid-template-columns: 1fr; grid-template-rows: 40vh 1fr; }
+      aside { border-right: 0; border-bottom: 1px solid var(--line); order: 2; }
+      #map { order: 1; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Live guard map</h1>
+    <span class="conn" id="conn" data-live="false">Offline</span>
+    <span class="grow"></span>
+    <button id="signout" hidden>Sign out</button>
+  </header>
+
+  <section class="login" id="login" hidden>
+    <h2>Sign in</h2>
+    <p>Use an account with access to the Dashboard.</p>
+    <form id="login-form">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required />
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required />
+      <button class="primary" type="submit">Sign in</button>
+      <div class="error" id="login-error"></div>
+    </form>
+  </section>
+
+  <main id="app" hidden>
+    <aside>
+      <div class="summary" id="summary">Loading…</div>
+      <div id="list"></div>
+    </aside>
+    <div id="map"></div>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    var API = "/api/v1";
+    var TOKEN_KEY = "alexios-admin-token";
+    /** A guard whose last point is older than this is shown grey. */
+    var STALE_MS = 2 * 60 * 1000;
+    var STATE_LABEL = { on_duty: "On duty", on_break: "On break" };
+
+    var token = null;
+    var guards = new Map();     // employeeId → guard
+    var markers = new Map();    // employeeId → { dot, ring }
+    var selected = null;
+    var map = null;
+    var socket = null;
+    var fitted = false;
+
+    var $ = function (id) { return document.getElementById(id); };
+
+    try { token = sessionStorage.getItem(TOKEN_KEY); } catch (e) { token = null; }
+
+    /* ── API ─────────────────────────────────────────────────────────────── */
+
+    function api(path, options) {
+      var headers = { "Content-Type": "application/json" };
+      if (token) headers.Authorization = "Bearer " + token;
+      return fetch(API + path, Object.assign({ credentials: "omit" }, options, { headers: headers })).then(function (res) {
+        return res.json().catch(function () { return null; }).then(function (body) {
+          if (res.status === 401) { signOut(); throw new Error("Session expired, sign in again"); }
+          if (!res.ok) throw new Error((body && (body.message || (body.error && body.error.message))) || "Request failed (" + res.status + ")");
+          return body;
+        });
+      });
+    }
+
+    /* ── Sign in / out ───────────────────────────────────────────────────── */
+
+    $("login-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      $("login-error").textContent = "";
+      api("/auth/login", { method: "POST", body: JSON.stringify({ email: $("email").value.trim(), password: $("password").value }) })
+        .then(function (body) {
+          token = body.accessToken || (body.data && body.data.accessToken);
+          if (!token) throw new Error("No access token in the login response");
+          try { sessionStorage.setItem(TOKEN_KEY, token); } catch (err) { /* memory only */ }
+          $("password").value = "";
+          open();
+        })
+        .catch(function (err) { $("login-error").textContent = err.message; });
+    });
+
+    $("signout").addEventListener("click", signOut);
+
+    function signOut() {
+      token = null;
+      try { sessionStorage.removeItem(TOKEN_KEY); } catch (e) { /* ignore */ }
+      if (socket) socket.disconnect();
+      socket = null;
+      setConn(false, "Offline");
+      $("app").hidden = true;
+      $("signout").hidden = true;
+      $("login").hidden = false;
+    }
+
+    /* ── Map ─────────────────────────────────────────────────────────────── */
+
+    function ensureMap() {
+      if (map) return;
+      map = L.map("map", { zoomControl: true }).setView([20.59, 78.96], 5);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap contributors"
+      }).addTo(map);
+    }
+
+    function isStale(g) {
+      return !g.location || Date.now() - new Date(g.location.recordedAt).getTime() > STALE_MS;
+    }
+
+    function colorOf(g) {
+      if (isStale(g)) return getComputedStyle(document.documentElement).getPropertyValue("--stale").trim();
+      return getComputedStyle(document.documentElement).getPropertyValue(g.state === "on_break" ? "--break" : "--duty").trim();
+    }
+
+    function ago(iso) {
+      var s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+      if (s < 60) return s + "s ago";
+      if (s < 3600) return Math.round(s / 60) + " min ago";
+      return Math.round(s / 3600) + " h ago";
+    }
+
+    function popupHtml(g) {
+      var div = document.createElement("div");
+      div.className = "popup";
+      var b = document.createElement("b");
+      b.textContent = g.name;
+      div.appendChild(b);
+      var lines = [
+        (STATE_LABEL[g.state] || g.state) + (g.site ? " · " + g.site.name : ""),
+        g.location ? "Updated " + ago(g.location.recordedAt) : "No location yet",
+        g.location && g.location.accuracyM != null ? "Accuracy ±" + Math.round(g.location.accuracyM) + " m" : null,
+        g.location && g.location.batteryPct != null ? "Battery " + g.location.batteryPct + "%" : null
+      ];
+      lines.filter(Boolean).forEach(function (text) {
+        var line = document.createElement("div");
+        line.textContent = text;
+        div.appendChild(line);
+      });
+      return div;
+    }
+
+    function drawMarker(g) {
+      var m = markers.get(g.employeeId);
+      if (!g.location) {
+        if (m) { m.dot.remove(); m.ring.remove(); markers.delete(g.employeeId); }
+        return;
+      }
+      var at = [g.location.lat, g.location.lng];
+      var color = colorOf(g);
+      if (!m) {
+        m = {
+          ring: L.circle(at, { radius: g.location.accuracyM || 0, weight: 1, fillOpacity: 0.08 }).addTo(map),
+          dot: L.circleMarker(at, { radius: 8, weight: 3, color: "#fff", fillOpacity: 1 }).addTo(map)
+        };
+        m.dot.on("click", function () { select(g.employeeId); });
+        markers.set(g.employeeId, m);
+      }
+      m.dot.setLatLng(at).setStyle({ fillColor: color });
+      m.ring.setLatLng(at).setRadius(g.location.accuracyM || 0).setStyle({ color: color, fillColor: color });
+      m.dot.bindPopup(popupHtml(g));
+    }
+
+    function removeGuard(id) {
+      var m = markers.get(id);
+      if (m) { m.dot.remove(); m.ring.remove(); markers.delete(id); }
+      guards.delete(id);
+      if (selected === id) selected = null;
+    }
+
+    function fitAll() {
+      var points = Array.from(guards.values()).filter(function (g) { return g.location; }).map(function (g) { return [g.location.lat, g.location.lng]; });
+      if (!points.length) return;
+      fitted = true;
+      if (points.length === 1) map.setView(points[0], 16);
+      else map.fitBounds(points, { padding: [40, 40], maxZoom: 17 });
+    }
+
+    function select(id) {
+      selected = id;
+      var g = guards.get(id);
+      renderList();
+      if (g && g.location) {
+        map.setView([g.location.lat, g.location.lng], Math.max(map.getZoom(), 16));
+        var m = markers.get(id);
+        if (m) m.dot.openPopup();
+      }
+    }
+
+    /* ── List ────────────────────────────────────────────────────────────── */
+
+    /* Rows are kept and updated in place (keyed by guard), so a click is never lost to a re-render. */
+    var rows = new Map();   // employeeId → { row, dot, name, sub }
+    var emptyNote = null;
+
+    function rowFor(g) {
+      var r = rows.get(g.employeeId);
+      if (r) return r;
+      var row = document.createElement("button");
+      row.className = "guard";
+      row.type = "button";
+      row.addEventListener("click", function () { select(g.employeeId); });
+      var top = document.createElement("div");
+      top.className = "guard-top";
+      var dot = document.createElement("span");
+      dot.className = "dot";
+      var name = document.createElement("span");
+      var sub = document.createElement("div");
+      sub.className = "guard-sub";
+      top.appendChild(dot);
+      top.appendChild(name);
+      row.appendChild(top);
+      row.appendChild(sub);
+      r = { row: row, dot: dot, name: name, sub: sub };
+      rows.set(g.employeeId, r);
+      return r;
+    }
+
+    function renderList() {
+      var list = $("list");
+      var all = Array.from(guards.values()).sort(function (a, b) { return a.name.localeCompare(b.name); });
+      var live = all.filter(function (g) { return !isStale(g); }).length;
+      $("summary").textContent = all.length
+        ? all.length + " on duty · " + live + " sharing location now"
+        : "Nobody is clocked in right now.";
+
+      rows.forEach(function (r, id) {
+        if (!guards.has(id)) { r.row.remove(); rows.delete(id); }
+      });
+      if (!all.length) {
+        if (!emptyNote) {
+          emptyNote = document.createElement("div");
+          emptyNote.className = "empty";
+          emptyNote.textContent = "Guards appear here as soon as they clock in, and leave when they clock out.";
+        }
+        list.appendChild(emptyNote);
+        return;
+      }
+      if (emptyNote) emptyNote.remove();
+
+      all.forEach(function (g, i) {
+        var r = rowFor(g);
+        r.row.dataset.selected = String(selected === g.employeeId);
+        r.dot.dataset.state = g.state;
+        r.dot.dataset.stale = String(isStale(g));
+        r.name.textContent = g.name;
+        r.sub.textContent = [
+          STATE_LABEL[g.state] || g.state,
+          g.site && g.site.name,
+          g.location ? "updated " + ago(g.location.recordedAt) : "waiting for location"
+        ].filter(Boolean).join(" · ");
+        // Only move a row when its position changed.
+        if (list.children[i] !== r.row) list.insertBefore(r.row, list.children[i] || null);
+      });
+    }
+
+    /* ── Live updates ────────────────────────────────────────────────────── */
+
+    function apply(payload) {
+      if (!payload || !payload.guard) return;
+      var g = payload.guard;
+      if (g.state !== "on_duty" && g.state !== "on_break") { removeGuard(g.employeeId); renderList(); return; }
+      var known = guards.get(g.employeeId);
+      // Status events carry no location, and a point older than the one shown (another device
+      // of the same guard, a late batch) must not move the marker back: keep the newer one.
+      if (known && known.location && (!g.location || new Date(g.location.recordedAt) < new Date(known.location.recordedAt))) {
+        g = Object.assign({}, g, { location: known.location });
+      }
+      guards.set(g.employeeId, g);
+      drawMarker(g);
+      renderList();
+      if (!fitted) fitAll();
+    }
+
+    function loadSnapshot() {
+      return api("/dashboard/live-map").then(function (body) {
+        var data = body.data;
+        Array.from(guards.keys()).forEach(removeGuard);
+        data.guards.forEach(function (g) { guards.set(g.employeeId, g); drawMarker(g); });
+        renderList();
+        if (!fitted) fitAll();
+        return data.channel;
+      });
+    }
+
+    function setConn(live, text) {
+      $("conn").dataset.live = String(live);
+      $("conn").textContent = text;
+    }
+
+    function loadSocketClient() {
+      if (window.io) return Promise.resolve();
+      return new Promise(function (resolve, reject) {
+        var s = document.createElement("script");
+        s.src = "/socket.io/socket.io.js";
+        s.onload = resolve;
+        s.onerror = function () { reject(new Error("Socket.IO client unavailable")); };
+        document.head.appendChild(s);
+      });
+    }
+
+    function connect(channel) {
+      if (socket) socket.disconnect();
+      socket = window.io({ path: "/socket.io", transports: ["websocket", "polling"], auth: { token: token } });
+      socket.on("connect", function () {
+        socket.emit("subscribe", channel, function (res) {
+          if (res && res.ok) {
+            setConn(true, "Live");
+            // Catch up on anything missed while disconnected.
+            loadSnapshot().catch(function () {});
+          } else {
+            setConn(false, "No live access (needs the Dashboard module)");
+          }
+        });
+      });
+      socket.on("disconnect", function () { setConn(false, "Reconnecting…"); });
+      socket.on("connect_error", function (err) {
+        setConn(false, "Offline (" + (err && err.message ? err.message : "connection failed") + ")");
+      });
+      socket.on("event", function (envelope) {
+        if (envelope && envelope.channel === channel) apply(envelope.payload);
+      });
+    }
+
+    function open() {
+      $("login").hidden = true;
+      $("app").hidden = false;
+      $("signout").hidden = false;
+      ensureMap();
+      setTimeout(function () { map.invalidateSize(); }, 0);
+      setConn(false, "Connecting…");
+      loadSnapshot()
+        .then(function (channel) { return loadSocketClient().then(function () { connect(channel); }); })
+        .catch(function (err) { setConn(false, err.message); });
+    }
+
+    // Keep "updated 12s ago" and the stale colouring current.
+    setInterval(function () {
+      if (!map) return;
+      guards.forEach(drawMarker);
+      renderList();
+    }, 15000);
+
+    if (token) open();
+    else $("login").hidden = false;
+  })();
+  </script>
+</body>
+</html>

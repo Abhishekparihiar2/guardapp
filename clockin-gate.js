@@ -1,24 +1,21 @@
 /* ============================================================================
- * ALEXIOS Mobile — Shift Start Checklist (design only)
+ * ALEXIOS Mobile — Clock In + Shift Start Checklist
  * ----------------------------------------------------------------------------
  * Add-on layered over the built bundle. No build step, no bundle edits.
  *
- * Clock In Now runs first and is never blocked — the bundle's own handler is
- * left alone, so the shift timer starts immediately. This checklist then opens
- * over the top and the steps run one after another:
+ * Clock In Now is held until the backend accepts the clock-in:
  *
- *   1. Daily Brief                  — acknowledge
- *   2. Prior Shift Reports (24h)    — one acknowledgement for the whole set
- *   3. Firearms & Duty Gear Log     — armed posts only, photo required
- *   4. Uniform & PPE Compliance     — item checks + selfie
+ *   1. Read GPS and call POST /mobile/clock-in/check. Outside the site border,
+ *      before/after the shift, or already clocked in → explain and stop.
+ *   2. Show only the pages the admin enabled for this guard's position
+ *      (Clients & Sites → Checklists → Clock In), any of:
+ *        Daily Brief · Prior Shift Reports · Firearms & Duty Gear · Uniform & PPE
+ *   3. On the last page, POST /mobile/clock-in. When it succeeds the bundle's
+ *      own handler runs and the home screen switches to on duty.
  *
- * Finishing the last step shows a confirmation and returns to the home screen.
- *
- * DESIGN ONLY. Nothing is submitted, stored or uploaded. The camera is not
- * opened — the photo tiles switch to a captured-looking placeholder so the
- * flow can be walked through. Every value below is mock-up copy, and which
- * steps appear would come from Client & Site Module > Checklists in the
- * real build (see STEPS: the shape mirrors that config).
+ * Page content (brief rows, gear, PPE items) is still mock-up copy, and photos
+ * are not uploaded yet — the photo tiles only mark that one was taken.
+ * Desk testing: AlexiosClockInGate.mockLocation(lat, lng) replaces GPS.
  * ========================================================================== */
 (function () {
   "use strict";
@@ -111,15 +108,26 @@
     "Radio and earpiece — tested"
   ];
 
-  /* Step order. In the real build this comes from the site's checklist config,
-     and a step whose post does not match (gear_log on an unarmed post) is
-     dropped before the run starts. */
-  var STEPS = [
-    { id: "brief",  type: "daily_brief",   label: "Daily Brief" },
-    { id: "prior",  type: "prior_reports", label: "Prior Shift Reports" },
-    { id: "gear",   type: "gear_log",      label: "Firearms & Duty Gear" },
-    { id: "ppe",    type: "uniform_ppe",   label: "Uniform & PPE" }
-  ];
+  /* Screen for each checklist item the admin can enable (Clients & Sites →
+     Checklists). The backend decides which of them this guard gets. */
+  var SCREENS = {
+    "daily-brief":   { id: "brief", type: "daily_brief",   label: "Daily Brief" },
+    "shift-summary": { id: "prior", type: "prior_reports", label: "Prior Shift Reports" },
+    "firearms":      { id: "gear",  type: "gear_log",      label: "Firearms & Duty Gear" },
+    "uniform-ppe":   { id: "ppe",   type: "uniform_ppe",   label: "Uniform & PPE" }
+  };
+
+  /* Steps for the current run, in the order the backend returned them. */
+  var STEPS = [];
+
+  function stepsFrom(checklist) {
+    return checklist
+      .filter(function (item) { return SCREENS[item.itemKey]; })
+      .map(function (item) {
+        var screen = SCREENS[item.itemKey];
+        return { id: screen.id, type: screen.type, label: screen.label, itemKey: item.itemKey };
+      });
+  }
 
   /* ── State (per run; nothing persists) ─────────────────────────────────── */
 
@@ -127,14 +135,19 @@
 
   function freshState() {
     return {
+      /* loading → steps → submitting → done, or blocked when clock-in is refused */
+      status: "loading",
+      message: "",
+      error: "",
+      clockIn: null,   // { shiftId, location, idempotencyKey } from the pre-check
       index: 0,
       briefAck: false,
       priorAck: false,
       priorOpen: {},
-      gearPhoto: false,
+      photos: { gear: { key: null, previewUrl: null, uploading: false },
+                selfie: { key: null, previewUrl: null, uploading: false } },
       gearItems: {},
       ppeItems: {},
-      ppeSelfie: false,
       done: false
     };
   }
@@ -165,15 +178,71 @@
     ]);
   }
 
-  function photoTile(shot, required, label, icon, onclick) {
-    return el("button", {
+  /** `photo` is state.photos[kind]: { key, previewUrl, uploading }. */
+  function photoTile(photo, required, label, icon, onclick) {
+    var shot = Boolean(photo.key);
+    var tile = el("button", {
       class: "acg-photo", type: "button",
-      "data-shot": String(!!shot), "data-req": String(!!required && !shot),
-      onclick: onclick
+      "data-shot": String(shot), "data-req": String(!!required && !shot && !photo.uploading),
+      onclick: photo.uploading ? null : onclick
     }, [
       el("span", { class: "acg-photo-ico", html: icon }),
-      el("span", { text: shot ? "Photo captured" : label })
+      el("span", { text: photo.uploading ? "Uploading photo…" : shot ? "Photo uploaded" : label })
     ]);
+    if (photo.previewUrl) {
+      tile.style.backgroundImage = "linear-gradient(rgba(5,10,20,.55), rgba(5,10,20,.55)), url(" + photo.previewUrl + ")";
+      tile.style.backgroundSize = "cover";
+      tile.style.backgroundPosition = "center";
+    }
+    return tile;
+  }
+
+  /* ── Photos ────────────────────────────────────────────────────────────────
+   * Uploaded to the server (POST /mobile/uploads/photo) as soon as they are
+   * taken; the returned key goes on the clock-in. Phones open the camera
+   * (rear for gear, front for the selfie); desktops open a file picker.
+   * ------------------------------------------------------------------------ */
+
+  function choosePhoto(kind, facing) {
+    var input = el("input", { type: "file", accept: "image/jpeg,image/png,image/webp", capture: facing });
+    input.style.display = "none";
+    input.addEventListener("change", function () {
+      var file = input.files && input.files[0];
+      input.remove();
+      if (file) attachPhoto(kind, file);
+    });
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  function attachPhoto(kind, file) {
+    var photo = state.photos[kind];
+    photo.uploading = true;
+    state.error = "";
+    render();
+
+    var form = new FormData();
+    form.append("kind", "clock-in");
+    form.append("file", file, file.name || kind + ".jpg");
+    return window.AlexiosAuth.fetch("/mobile/uploads/photo", { method: "POST", body: form })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (json) {
+          if (!res.ok) throw new Error((json && json.message) || "Upload failed (" + res.status + ")");
+          return json.data;
+        });
+      })
+      .then(function (saved) {
+        if (photo.previewUrl) URL.revokeObjectURL(photo.previewUrl);
+        photo.key = saved.key;
+        photo.previewUrl = URL.createObjectURL(file);
+      })
+      .catch(function (err) {
+        state.error = err.message === "Failed to fetch" ? "No connection. Try the photo again." : err.message;
+      })
+      .then(function () {
+        photo.uploading = false;
+        render();
+      });
   }
 
   /* ── UI shell ──────────────────────────────────────────────────────────── */
@@ -358,8 +427,8 @@
 
     body.appendChild(el("div", { class: "acg-label", text: "Gear photo" }));
     body.appendChild(photoTile(
-      state.gearPhoto, true, "Photograph your gear laid out", ICON.cam,
-      function () { state.gearPhoto = !state.gearPhoto; render(); }
+      state.photos.gear, true, "Photograph your gear laid out", ICON.cam,
+      function () { choosePhoto("gear", "environment"); }
     ));
   }
 
@@ -393,8 +462,8 @@
 
     body.appendChild(el("div", { class: "acg-label", text: "Compliance selfie" }));
     body.appendChild(photoTile(
-      state.ppeSelfie, true, "Take a selfie in uniform", ICON.selfie,
-      function () { state.ppeSelfie = !state.ppeSelfie; render(); }
+      state.photos.selfie, true, "Take a selfie in uniform", ICON.selfie,
+      function () { choosePhoto("selfie", "user"); }
     ));
   }
 
@@ -410,10 +479,10 @@
     if (s.type === "daily_brief") return state.briefAck;
     if (s.type === "prior_reports") return state.priorAck;
     if (s.type === "gear_log") {
-      return state.gearPhoto &&
+      return Boolean(state.photos.gear.key) &&
         GEAR.nonLethal.every(function (_, i) { return state.gearItems[i]; });
     }
-    if (s.type === "uniform_ppe") return state.ppeSelfie && countPpe() === PPE.length;
+    if (s.type === "uniform_ppe") return Boolean(state.photos.selfie.key) && countPpe() === PPE.length;
     return true;
   }
 
@@ -429,9 +498,32 @@
 
   /* ── Render ────────────────────────────────────────────────────────────── */
 
+  function renderNotice(u, title, text, buttonLabel) {
+    u.back.dataset.hidden = "true";
+    u.sub.textContent = title;
+    u.count.textContent = "";
+    u.fill.style.width = "0%";
+    u.hint.textContent = "";
+    u.next.dataset.disabled = String(!buttonLabel);
+    u.next.textContent = buttonLabel || "Please wait";
+    u.body.appendChild(el("div", { class: "acg-done" }, [
+      el("div", { class: "acg-done-t", text: title }),
+      el("div", { class: "acg-done-s", text: text })
+    ]));
+  }
+
   function render() {
     var u = build();
     u.body.textContent = "";
+
+    if (state.status === "loading") {
+      renderNotice(u, "CHECKING LOCATION", state.message || "Confirming you are at your post…", "");
+      return;
+    }
+    if (state.status === "blocked") {
+      renderNotice(u, "CANNOT CLOCK IN", state.message, "Close");
+      return;
+    }
 
     if (state.done) {
       u.back.dataset.hidden = "true";
@@ -465,10 +557,11 @@
     else if (s.type === "gear_log") stepGear(u.body);
     else if (s.type === "uniform_ppe") stepPpe(u.body);
 
-    var ready = stepReady();
+    var ready = stepReady() && state.status !== "submitting";
+    var last = state.index === STEPS.length - 1;
     u.next.dataset.disabled = String(!ready);
-    u.next.textContent = state.index === STEPS.length - 1 ? "Finish" : "Continue";
-    u.hint.textContent = hintFor();
+    u.next.textContent = state.status === "submitting" ? "Clocking in…" : last ? "Finish & Clock In" : "Continue";
+    u.hint.textContent = state.error || hintFor();
     u.body.scrollTop = 0;
   }
 
@@ -481,24 +574,16 @@
   /* ── Navigation ────────────────────────────────────────────────────────── */
 
   function advance() {
-    if (state.done) { close(); return; }
-    if (!stepReady()) return;
-    if (state.index < STEPS.length - 1) state.index++;
-    else state.done = true;
-    render();
+    if (state.done || state.status === "blocked") { close(); return; }
+    if (state.status !== "steps" || !stepReady()) return;
+    if (state.index < STEPS.length - 1) { state.index++; render(); return; }
+    submitClockIn();
   }
 
   function prev() {
     if (state.index === 0) return;
     state.index--;
     render();
-  }
-
-  function open() {
-    state = freshState();
-    build();
-    render();
-    setTimeout(function () { UI.overlay.dataset.open = "true"; }, 16);
   }
 
   function close() {
@@ -508,24 +593,244 @@
     setTimeout(function () { UI.body.textContent = ""; }, 260);
   }
 
-  /* ── Clock In hook ─────────────────────────────────────────────────────────
-   * Bubble phase, so the bundle's own handler runs first and the shift timer
-   * starts before the checklist appears. The click is never cancelled.
+  /* ── Backend ───────────────────────────────────────────────────────────────
+   * POST /mobile/clock-in/check  → geofence result + which pages to show
+   * POST /mobile/clock-in        → records the punch once the pages are done
+   * Requests go through window.AlexiosAuth (alexios-auth.js) for the token.
    * ------------------------------------------------------------------------ */
 
-  function isClockIn(node) {
-    for (var n = node; n && n !== document.body; n = n.parentElement) {
-      if (n.tagName === "BUTTON" && n.textContent.trim() === "Clock In Now") return true;
+  var MOCK_LOCATION_KEY = "alexios.mockLocation";   // "lat,lng" — for desk testing only
+
+  function mockLocation() {
+    try {
+      var raw = localStorage.getItem(MOCK_LOCATION_KEY);
+      if (!raw) return null;
+      var parts = raw.split(",").map(Number);
+      return isFinite(parts[0]) && isFinite(parts[1]) ? { lat: parts[0], lng: parts[1], accuracyM: 5 } : null;
+    } catch (e) {
+      return null;
     }
-    return false;
+  }
+
+  function currentLocation() {
+    var mock = mockLocation();
+    if (mock) return Promise.resolve(mock);
+    return new Promise(function (resolve, reject) {
+      if (!navigator.geolocation) {
+        reject(new Error("This device cannot share its location."));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracyM: Math.round(pos.coords.accuracy) });
+        },
+        function (err) {
+          reject(new Error(err.code === 1
+            ? "Location permission is off. Allow location access to clock in."
+            : "Could not get your location. Move to an open area and try again."));
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    });
+  }
+
+  /** POST when a body is given, GET otherwise. Resolves to the response's `data`. */
+  function api(path, body) {
+    if (!window.AlexiosAuth) return Promise.reject(new Error("You are not signed in."));
+    var options = body === undefined
+      ? { method: "GET", headers: { "X-Client": "mobile" } }
+      : { method: "POST", headers: { "Content-Type": "application/json", "X-Client": "mobile" }, body: JSON.stringify(body) };
+    return window.AlexiosAuth.fetch(path, options).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (json) {
+        if (!res.ok) {
+          var err = new Error((json && json.message) || "Request failed (" + res.status + ")");
+          err.code = json && json.error && json.error.code;
+          throw err;
+        }
+        return json.data;
+      });
+    }, function () {
+      throw new Error("No connection to the server. Try again.");
+    });
+  }
+
+  function newIdempotencyKey() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, function (c) {
+      return (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16);
+    });
+  }
+
+  /** Server key of the photo uploaded for this page, if it needs one. */
+  function photoKeyFor(step) {
+    if (step.type === "gear_log") return state.photos.gear.key || undefined;
+    if (step.type === "uniform_ppe") return state.photos.selfie.key || undefined;
+    return undefined;
+  }
+
+  function block(message) {
+    state.status = "blocked";
+    state.message = message;
+    render();
+  }
+
+  function startClockIn() {
+    state = freshState();
+    build();
+    render();
+    setTimeout(function () { UI.overlay.dataset.open = "true"; }, 16);
+
+    currentLocation()
+      .then(function (location) {
+        return api("/mobile/clock-in/check", location).then(function (result) {
+          return { location: location, result: result };
+        });
+      })
+      .then(function (r) {
+        if (!r.result.canClockIn) { block(r.result.reason.message); return; }
+        STEPS = stepsFrom(r.result.checklist || []);
+        state.clockIn = { shiftId: r.result.shift.id, location: r.location, idempotencyKey: newIdempotencyKey() };
+        state.status = "steps";
+        if (STEPS.length === 0) { submitClockIn(); return; }
+        render();
+      })
+      .catch(function (err) { block(err.message); });
+  }
+
+  function submitClockIn() {
+    state.status = "submitting";
+    state.error = "";
+    if (STEPS.length) render();
+    else renderNoticeNow("CLOCKING IN", "Recording your clock-in…");
+
+    var checklist = STEPS.map(function (step) {
+      return { itemKey: step.itemKey, photoKey: photoKeyFor(step) };
+    });
+
+    // Re-read the location: the guard may have moved while filling the pages.
+    currentLocation()
+      .catch(function () { return state.clockIn.location; })
+      .then(function (location) {
+        return api("/mobile/clock-in", {
+          lat: location.lat,
+          lng: location.lng,
+          accuracyM: location.accuracyM,
+          shiftId: state.clockIn.shiftId,
+          idempotencyKey: state.clockIn.idempotencyKey,   // same key on retry → no duplicate punch
+          checklist: checklist
+        });
+      })
+      .then(function () {
+        state.status = "done";
+        state.done = true;
+        startBundleShift();
+        render();
+      })
+      .catch(function (err) {
+        if (err.code === "OUTSIDE_GEOFENCE" || err.code === "SHIFT_ENDED" || err.code === "NO_ACTIVE_SHIFT") {
+          block(err.message);
+          return;
+        }
+        state.status = "steps";
+        state.error = err.message;
+        if (STEPS.length) render();
+        else block(err.message);
+      });
+  }
+
+  function renderNoticeNow(title, text) {
+    var u = build();
+    u.body.textContent = "";
+    renderNotice(u, title, text, "");
+  }
+
+  /* ── Clock In hook ─────────────────────────────────────────────────────────
+   * Capture phase: the bundle's own handler (which starts the on-duty timer)
+   * only runs once the backend has accepted the clock-in.
+   * ------------------------------------------------------------------------ */
+
+  var passThrough = false;
+
+  function clockInButton(node) {
+    for (var n = node; n && n !== document.body; n = n.parentElement) {
+      if (n.tagName === "BUTTON" && n.textContent.trim() === "Clock In Now") return n;
+    }
+    return null;
+  }
+
+  function startBundleShift() {
+    var button = Array.prototype.find.call(document.querySelectorAll("button"), function (b) {
+      return b.textContent.trim() === "Clock In Now";
+    });
+    if (!button) return;
+    passThrough = true;
+    button.click();
   }
 
   document.addEventListener("click", function (e) {
-    if (!isClockIn(e.target)) return;
-    setTimeout(open, 420);           // let the clocked-in state paint first
-  }, false);
+    if (!clockInButton(e.target)) return;
+    if (passThrough) { passThrough = false; return; }
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    startClockIn();
+  }, true);
+
+  /* ── Restore after reload ──────────────────────────────────────────────────
+   * The bundle keeps duty state in memory only, so a reload always lands on
+   * "Off duty". When the home screen appears, ask GET /mobile/duty and replay
+   * the bundle's own buttons to match what the backend recorded.
+   * Note: the bundle's shift countdown restarts from the moment of the replay.
+   * ------------------------------------------------------------------------ */
+
+  var restoreChecked = false;
+
+  function findButton(label) {
+    return Array.prototype.find.call(document.querySelectorAll("button"), function (b) {
+      return b.textContent.trim() === label;
+    });
+  }
+
+  function restoreDutyState() {
+    if (restoreChecked || !window.AlexiosAuth || !window.AlexiosAuth.token()) return;
+    restoreChecked = true;
+    api("/mobile/duty")
+      .then(function (duty) {
+        if (duty.state !== "on_duty" && duty.state !== "on_break") return;
+        startBundleShift();
+        if (duty.state === "on_break") {
+          setTimeout(function () {
+            // Replay through break-gate.js so it does not start a second break.
+            if (window.AlexiosBreakGate) window.AlexiosBreakGate.replay("Take Break");
+          }, 300);
+        }
+      })
+      .catch(function () { restoreChecked = false; /* try again next time home renders */ });
+  }
+
+  new MutationObserver(function () {
+    if (!restoreChecked && findButton("Clock In Now")) restoreDutyState();
+  }).observe(document.documentElement, { childList: true, subtree: true });
+
+  /* Shared with the other add-ons (clockout-gate.js) so they talk to the
+     backend the same way. */
+  window.AlexiosMobile = {
+    api: api,
+    currentLocation: currentLocation,
+    newIdempotencyKey: newIdempotencyKey,
+    findButton: findButton
+  };
 
   window.AlexiosClockInGate = {
-    open: open, close: close, steps: STEPS
+    open: startClockIn, close: close,
+    /** Testing: attach a File to "gear" or "selfie" without the native picker. */
+    attachPhoto: function (kind, file) { return attachPhoto(kind, file); },
+    steps: function () { return STEPS; },
+    /** Desk testing: AlexiosClockInGate.mockLocation(26.7993, 75.8184), or null to use GPS. */
+    mockLocation: function (lat, lng) {
+      try {
+        if (lat == null) localStorage.removeItem(MOCK_LOCATION_KEY);
+        else localStorage.setItem(MOCK_LOCATION_KEY, lat + "," + lng);
+      } catch (e) { /* storage blocked */ }
+    }
   };
 })();

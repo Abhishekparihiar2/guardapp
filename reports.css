@@ -1,0 +1,102 @@
+/* ALEXIOS Mobile — Field Reporting Hub (reports.js). Builds on the overlay styles in clockin-gate.css. */
+
+.acg-overlay[data-flow="reports"] .acg-body { padding-bottom: 24px; }
+
+/* ── Hub: report type cards ─────────────────────────────────────────────── */
+.arp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.arp-type {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-height: 140px; padding: 14px;
+  text-align: left; cursor: pointer; border-radius: 14px; color: #fff;
+  background: linear-gradient(160deg, rgba(37,99,235,.10), rgba(15,23,42,.6)); border: 1px solid rgba(96,165,250,.16);
+}
+.arp-type[data-tone="red"] { background: linear-gradient(160deg, rgba(239,68,68,.10), rgba(15,23,42,.6)); border-color: rgba(248,113,113,.18); }
+.arp-type[data-tone="amber"] { background: linear-gradient(160deg, rgba(245,158,11,.08), rgba(15,23,42,.6)); border-color: rgba(251,191,36,.16); }
+.arp-type[data-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.arp-type:active:not([data-disabled="true"]) { transform: scale(.985); }
+.arp-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; color: #60a5fa; background: rgba(59,130,246,.14); border: 1px solid rgba(96,165,250,.25); }
+.arp-type[data-tone="red"] .arp-icon { color: #f87171; background: rgba(239,68,68,.14); border-color: rgba(248,113,113,.3); }
+.arp-type[data-tone="amber"] .arp-icon { color: #fbbf24; background: rgba(245,158,11,.14); border-color: rgba(251,191,36,.3); }
+.arp-type-name { font: 700 13px/1.25 "Inter", sans-serif; letter-spacing: .6px; text-transform: uppercase; }
+.arp-type-desc { font: 400 10.5px/1.45 "DM Mono", ui-monospace, monospace; color: rgba(255,255,255,.45); flex: 1; }
+.arp-pill { font: 600 9px/1 "DM Mono", ui-monospace, monospace; letter-spacing: 1.2px; text-transform: uppercase; padding: 5px 8px; border-radius: 6px;
+  color: #67e8f9; background: rgba(34,211,238,.08); border: 1px solid rgba(34,211,238,.25); white-space: nowrap; }
+.arp-pill[data-tone="red"] { color: #fca5a5; background: rgba(239,68,68,.10); border-color: rgba(248,113,113,.3); }
+.arp-pill[data-tone="amber"] { color: #fcd34d; background: rgba(245,158,11,.10); border-color: rgba(251,191,36,.3); }
+.arp-pill[data-tone="green"] { color: #6ee7b7; background: rgba(16,185,129,.10); border-color: rgba(52,211,153,.3); }
+.arp-pill[data-tone="grey"] { color: rgba(255,255,255,.55); background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.12); }
+
+.arp-section { margin: 20px 2px 8px; font: 500 10px/1 "DM Mono", ui-monospace, monospace; letter-spacing: 2.4px; color: rgba(255,255,255,.4); text-transform: uppercase; }
+
+/* ── Hub: recent submissions ────────────────────────────────────────────── */
+.arp-recent { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; text-align: left;
+  border-radius: 12px; color: #fff; background: rgba(15,23,42,.55); border: 1px solid rgba(255,255,255,.06); }
+.arp-recent-time { font: 500 12px/1 "DM Mono", ui-monospace, monospace; color: #5eead4; min-width: 40px; }
+.arp-recent-main { flex: 1; min-width: 0; }
+.arp-recent-name { font: 600 13px/1.3 "Inter", sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arp-recent-site { margin-top: 2px; font: 400 10.5px/1.3 "DM Mono", ui-monospace, monospace; color: rgba(255,255,255,.4); }
+.arp-empty { padding: 16px; text-align: center; font: 400 12px/1.5 "Inter", sans-serif; color: rgba(255,255,255,.45);
+  border: 1px dashed rgba(255,255,255,.1); border-radius: 12px; }
+
+/* ── Form ───────────────────────────────────────────────────────────────── */
+.arp-info { padding: 4px 14px; border-radius: 12px; background: rgba(15,23,42,.55); border: 1px solid rgba(255,255,255,.06); }
+.arp-info-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; }
+.arp-info-row + .arp-info-row { border-top: 1px solid rgba(255,255,255,.05); }
+.arp-info-k { font: 500 10px/1 "DM Mono", ui-monospace, monospace; letter-spacing: 1.6px; color: rgba(255,255,255,.4); text-transform: uppercase; }
+.arp-info-v { font: 500 12px/1.3 "DM Mono", ui-monospace, monospace; color: #93c5fd; text-align: right; }
+.arp-info-v select { max-width: 200px; }
+
+.arp-field { margin-top: 16px; }
+.arp-label { display: block; margin-bottom: 7px; font: 500 10px/1.3 "DM Mono", ui-monospace, monospace; letter-spacing: 1.6px; color: rgba(255,255,255,.55); text-transform: uppercase; }
+.arp-label b { color: #f87171; font-weight: 600; }
+.arp-help { margin: -2px 0 7px; font: 400 11px/1.4 "Inter", sans-serif; color: rgba(255,255,255,.4); }
+.arp-control { width: 100%; padding: 12px 13px; border-radius: 10px; font: 400 14px/1.4 "Inter", sans-serif; color: #fff; color-scheme: dark;
+  background: rgba(15,23,42,.7); border: 1px solid rgba(255,255,255,.1); outline: none; box-sizing: border-box; }
+.arp-control:focus { border-color: rgba(96,165,250,.6); }
+textarea.arp-control { min-height: 110px; resize: vertical; }
+.arp-field[data-error="true"] .arp-control,
+.arp-field[data-error="true"] .arp-chips,
+.arp-field[data-error="true"] .arp-check,
+.arp-field[data-error="true"] .arp-photos,
+.arp-field[data-error="true"] .arp-sign { border-color: rgba(248,113,113,.7); }
+.arp-error { margin-top: 6px; font: 400 11.5px/1.3 "Inter", sans-serif; color: #fca5a5; }
+.arp-divider { margin: 24px 0 2px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.08); font: 600 11px/1 "DM Mono", ui-monospace, monospace;
+  letter-spacing: 2px; color: rgba(255,255,255,.6); text-transform: uppercase; }
+
+.arp-chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px; border: 1px solid transparent; border-radius: 10px; }
+.arp-chip { padding: 9px 12px; border-radius: 999px; cursor: pointer; font: 500 12.5px/1 "Inter", sans-serif; color: rgba(255,255,255,.75);
+  background: rgba(15,23,42,.7); border: 1px solid rgba(255,255,255,.12); }
+.arp-chip[aria-pressed="true"] { color: #fff; background: rgba(37,99,235,.35); border-color: rgba(96,165,250,.7); }
+
+.arp-check { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 13px; cursor: pointer; text-align: left; border-radius: 10px;
+  font: 500 13px/1.3 "Inter", sans-serif; color: #fff; background: rgba(15,23,42,.7); border: 1px solid rgba(255,255,255,.1); }
+.arp-box { width: 20px; height: 20px; flex: none; border-radius: 6px; display: grid; place-items: center; border: 1.5px solid rgba(255,255,255,.3); color: transparent; }
+.arp-check[aria-pressed="true"] .arp-box { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+.arp-photos { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px; border: 1px solid transparent; border-radius: 10px; }
+.arp-photo, .arp-photo-add { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; flex: none;
+  background: rgba(15,23,42,.7); border: 1px solid rgba(255,255,255,.12); }
+.arp-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.arp-photo[data-kind="signature"] { width: 168px; background: #fff; }
+.arp-photo[data-kind="signature"] img { object-fit: contain; }
+.arp-photo-x { position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(0,0,0,.65); color: #fff; font: 600 13px/22px "Inter", sans-serif; padding: 0; }
+.arp-photo-add { display: grid; place-items: center; cursor: pointer; color: rgba(255,255,255,.6); border-style: dashed; font: 500 11px/1.3 "Inter", sans-serif; text-align: center; }
+.arp-photo[data-busy="true"]::after { content: "Uploading…"; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.55);
+  color: #fff; font: 500 10px/1 "Inter", sans-serif; }
+
+.arp-sign { position: relative; border-radius: 10px; overflow: hidden; background: #f8fafc; border: 1px solid rgba(255,255,255,.1); }
+.arp-sign canvas { display: block; width: 100%; height: 150px; touch-action: none; cursor: crosshair; }
+.arp-sign-clear { position: absolute; top: 8px; right: 8px; padding: 5px 9px; border-radius: 6px; border: 0; cursor: pointer;
+  background: rgba(15,23,42,.8); color: #fff; font: 500 11px/1 "Inter", sans-serif; }
+.arp-sign-hint { position: absolute; left: 12px; bottom: 10px; font: 400 11px/1 "Inter", sans-serif; color: #94a3b8; pointer-events: none; }
+
+.arp-unsupported { padding: 10px 12px; border-radius: 10px; font: 400 12px/1.4 "Inter", sans-serif; color: rgba(255,255,255,.5);
+  background: rgba(255,255,255,.03); border: 1px dashed rgba(255,255,255,.12); }
+
+/* ── Detail ─────────────────────────────────────────────────────────────── */
+.arp-answer { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: rgba(15,23,42,.55); border: 1px solid rgba(255,255,255,.06); }
+.arp-answer-v { margin-top: 6px; font: 400 13.5px/1.55 "Inter", sans-serif; color: rgba(255,255,255,.88); white-space: pre-wrap; word-break: break-word; }
+.arp-answer .arp-photos { margin-top: 8px; }
+.arp-status[data-tone="green"] { color: #6ee7b7; }
+.arp-status[data-tone="amber"] { color: #fcd34d; }
+.arp-status[data-tone="red"] { color: #fca5a5; }

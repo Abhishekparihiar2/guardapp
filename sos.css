@@ -1,0 +1,23 @@
+/* ALEXIOS Mobile — SOS (sos.js). Builds on the overlay styles in clockin-gate.css. */
+
+.acg-overlay[data-flow="sos"] { background: #120406; z-index: 400; }
+.acg-overlay[data-flow="sos"] .acg-title { color: #ff6b6b; }
+
+.asos-pick { width: 100%; display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 16px; cursor: pointer;
+  text-align: left; background: rgba(255,50,50,.08); border: 1px solid rgba(255,70,70,.35); color: #fff; }
+.asos-pick + .asos-pick { margin-top: 10px; }
+.asos-pick:active { background: rgba(255,50,50,.18); }
+.asos-pick-t { font-family: "Inter", sans-serif; font-size: 16px; font-weight: 700; color: #ff8a8a; }
+.asos-pick-s { margin-top: 3px; font-family: "Inter", sans-serif; font-size: 12px; color: rgba(255,255,255,.55); }
+
+.asos-beacon { width: 96px; height: 96px; margin: 8px auto 4px; border-radius: 50%; background: rgba(255,48,48,.25);
+  box-shadow: 0 0 0 0 rgba(255,48,48,.6); animation: asos-pulse 1.6s infinite; }
+@keyframes asos-pulse { 0% { box-shadow: 0 0 0 0 rgba(255,48,48,.55); } 70% { box-shadow: 0 0 0 26px rgba(255,48,48,0); } 100% { box-shadow: 0 0 0 0 rgba(255,48,48,0); } }
+
+.asos-big { text-align: center; font-family: "Inter", sans-serif; font-size: 22px; font-weight: 700; color: #fff; }
+.asos-tag { text-align: center; font-family: "DM Mono", ui-monospace, monospace; font-size: 11px; letter-spacing: 2px; color: #ff6b6b; }
+.asos-tag[data-ok="true"] { color: #6ee7b7; }
+
+.acg-overlay[data-flow="sos"] .acg-next { background: linear-gradient(90deg, #ef4444, #dc2626); color: #fff; }
+.acg-overlay[data-flow="sos"] .acg-next[data-variant="calm"] { background: rgba(255,255,255,.06); color: rgba(255,255,255,.85);
+  border: 1px solid rgba(255,255,255,.12); }
