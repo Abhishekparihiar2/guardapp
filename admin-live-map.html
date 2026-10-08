@@ -20,7 +20,7 @@
   <style>
     :root {
       --bg: #f4f6fa; --panel: #ffffff; --line: #e3e7ef; --text: #111827; --muted: #6b7280;
-      --duty: #16a34a; --break: #d97706; --stale: #9ca3af; --accent: #2563eb; --danger: #dc2626;
+      --duty: #16a34a; --break: #d97706; --stale: #9ca3af; --accent: #2563eb; --danger: #dc2626; --outside: #dc2626;
     }
     @media (prefers-color-scheme: dark) {
       :root { --bg: #0b1220; --panel: #111a2c; --line: #1f2a40; --text: #e5e7eb; --muted: #94a3b8; }
@@ -45,6 +45,8 @@
     .dot[data-state="on_duty"] { background: var(--duty); }
     .dot[data-state="on_break"] { background: var(--break); }
     .dot[data-stale="true"] { background: var(--stale); }
+    .dot[data-outside="true"] { background: var(--outside); box-shadow: 0 0 0 3px rgba(220,38,38,.25); }
+    .guard-sub b { color: var(--outside); font-weight: 600; }
     .guard-sub { margin-top: 2px; color: var(--muted); font-size: 12px; }
     .empty { padding: 24px 16px; color: var(--muted); }
     #map { height: 100%; }
@@ -174,8 +176,17 @@
       return !g.location || Date.now() - new Date(g.location.recordedAt).getTime() > STALE_MS;
     }
 
+    /** PostGIS result from the API: outside the site border plus its tolerance. */
+    function isOutside(g) { return Boolean(g.geofence && g.geofence.inside === false); }
+
+    function geofenceText(g) {
+      if (!g.geofence || !g.geofence.configured) return null;
+      return g.geofence.inside ? "Inside site" : "Outside site · " + Math.round(g.geofence.distanceM) + " m";
+    }
+
     function colorOf(g) {
       if (isStale(g)) return getComputedStyle(document.documentElement).getPropertyValue("--stale").trim();
+      if (isOutside(g)) return getComputedStyle(document.documentElement).getPropertyValue("--outside").trim();
       return getComputedStyle(document.documentElement).getPropertyValue(g.state === "on_break" ? "--break" : "--duty").trim();
     }
 
@@ -195,6 +206,7 @@
       var lines = [
         (STATE_LABEL[g.state] || g.state) + (g.site ? " · " + g.site.name : ""),
         g.location ? "Updated " + ago(g.location.recordedAt) : "No location yet",
+        geofenceText(g),
         g.location && g.location.accuracyM != null ? "Accuracy ±" + Math.round(g.location.accuracyM) + " m" : null,
         g.location && g.location.batteryPct != null ? "Battery " + g.location.batteryPct + "%" : null
       ];
@@ -286,8 +298,9 @@
       var list = $("list");
       var all = Array.from(guards.values()).sort(function (a, b) { return a.name.localeCompare(b.name); });
       var live = all.filter(function (g) { return !isStale(g); }).length;
+      var outside = all.filter(function (g) { return !isStale(g) && isOutside(g); }).length;
       $("summary").textContent = all.length
-        ? all.length + " on duty · " + live + " sharing location now"
+        ? all.length + " on duty · " + live + " sharing location now" + (outside ? " · " + outside + " outside their site" : "")
         : "Nobody is clocked in right now.";
 
       rows.forEach(function (r, id) {
@@ -309,12 +322,17 @@
         r.row.dataset.selected = String(selected === g.employeeId);
         r.dot.dataset.state = g.state;
         r.dot.dataset.stale = String(isStale(g));
+        r.dot.dataset.outside = String(!isStale(g) && isOutside(g));
         r.name.textContent = g.name;
         r.sub.textContent = [
           STATE_LABEL[g.state] || g.state,
           g.site && g.site.name,
           g.location ? "updated " + ago(g.location.recordedAt) : "waiting for location"
         ].filter(Boolean).join(" · ");
+        if (!isStale(g) && isOutside(g)) {
+          r.sub.appendChild(document.createTextNode(" · "));
+          r.sub.appendChild(Object.assign(document.createElement("b"), { textContent: geofenceText(g) }));
+        }
         // Only move a row when its position changed.
         if (list.children[i] !== r.row) list.insertBefore(r.row, list.children[i] || null);
       });
@@ -330,7 +348,7 @@
       // Status events carry no location, and a point older than the one shown (another device
       // of the same guard, a late batch) must not move the marker back: keep the newer one.
       if (known && known.location && (!g.location || new Date(g.location.recordedAt) < new Date(known.location.recordedAt))) {
-        g = Object.assign({}, g, { location: known.location });
+        g = Object.assign({}, g, { location: known.location, geofence: known.geofence });
       }
       guards.set(g.employeeId, g);
       drawMarker(g);
