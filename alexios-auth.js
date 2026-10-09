@@ -5,7 +5,7 @@
  * "Authenticate" button, signs in against the ALEXIOS API, and only lets the
  * app continue when the backend accepts the credentials.
  *
- * Backend:  POST {apiBase}/auth/login  { email, password }
+ * Backend:  POST {apiBase}/auth/guard/login  { email, password }  (non-admin staff; admins get 403)
  *           → { accessToken, user }  + HttpOnly refresh cookie "token"
  * The Officer ID field takes the work email until Officer ID + PIN login
  * exists on the backend (pending client decision).
@@ -50,13 +50,14 @@
     var code = body && body.error && body.error.code;
     if (code === "INVALID_CREDENTIALS") return "Invalid email or password.";
     if (code === "ACCOUNT_INACTIVE") return "This account is not active. Contact your supervisor.";
+    if (code === "UNAUTHORIZED_CONTEXT") return "This is an admin account. Sign in on the ALEXIOS web portal instead.";
     if (code === "RATE_LIMITED" || status === 429) return "Too many attempts. Try again in a few minutes.";
     if (body && body.message) return body.message;
     return "Sign in failed (" + status + ").";
   }
 
   function login(email, password) {
-    return fetch(CONFIG.apiBase + "/auth/login", {
+    return fetch(CONFIG.apiBase + "/auth/guard/login", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", "X-Client": "mobile" },

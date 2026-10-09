@@ -8,7 +8,7 @@
   <!--
     ALEXIOS admin — live guard map (reference page for the CRM).
 
-      1. POST /api/v1/auth/login                      → accessToken (no cookie: credentials "omit")
+      1. POST /api/v1/auth/admin/login                → accessToken (no cookie: credentials "omit")
       2. GET  /api/v1/dashboard/live-map              → guards on duty + their last point, and the channel
       3. Socket.IO (path /socket.io, auth.token)      → emit "subscribe" <channel>
       4. "event" { payload: { type, guard } }         → guard.location moves a marker,
@@ -137,7 +137,7 @@
     $("login-form").addEventListener("submit", function (e) {
       e.preventDefault();
       $("login-error").textContent = "";
-      api("/auth/login", { method: "POST", body: JSON.stringify({ email: $("email").value.trim(), password: $("password").value }) })
+      api("/auth/admin/login", { method: "POST", body: JSON.stringify({ email: $("email").value.trim(), password: $("password").value }) })
         .then(function (body) {
           token = body.accessToken || (body.data && body.data.accessToken);
           if (!token) throw new Error("No access token in the login response");
