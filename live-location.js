@@ -1,8 +1,10 @@
 /* ============================================================================
  * ALEXIOS Mobile — Live location over Socket.IO (clock-in → clock-out)
  * ----------------------------------------------------------------------------
- * The socket exists only while the guard is on duty. Signed in but not
- * clocked in means no socket at all.
+ * The socket exists only while the guard is on duty, or while a screen that
+ * needs live updates holds it open (chat.js: retain("chat") / release("chat")).
+ * Signed in, not clocked in and no such screen open means no socket at all.
+ * Location is only ever shared on duty.
  *
  *   clock in   → clockin-gate.js calls onDuty() → socket opens, GPS on, fixes
  *                streamed as "location:update" every SEND_EVERY_MS (acknowledged)
@@ -36,8 +38,21 @@
   var lastFixAt = 0;
   var fallbackTimer = null;
   var polling = false;
-  var onDutyNow = false;    // what the backend last told us; gates every socket connect
+  var onDutyNow = false;    // what the backend last told us
   var dutyChecked = false;  // initial GET /mobile/duty done for this sign-in
+  var holders = {};         // screens keeping the socket open off duty, e.g. { chat: true }
+  var listeners = [];       // onEvent() subscribers: every "event" envelope + connect notices
+
+  /** The one gate for every socket connect. */
+  function wantSocket() {
+    return onDutyNow || Object.keys(holders).length > 0;
+  }
+
+  function notify(envelope) {
+    listeners.slice().forEach(function (fn) {
+      try { fn(envelope); } catch (e) { /* one bad listener must not stop the others */ }
+    });
+  }
 
   function signedIn() {
     return Boolean(window.AlexiosMobile && window.AlexiosAuth && window.AlexiosAuth.token());
@@ -62,8 +77,8 @@
   function connect() {
     if (socket) return;
     loadClient().then(function () {
-      // Duty may have ended while the client script was loading.
-      if (socket || !signedIn() || !onDutyNow) return;
+      // Duty may have ended (or the chat closed) while the client script was loading.
+      if (socket || !signedIn() || !wantSocket()) return;
       socket = window.io({
         path: "/socket.io",
         transports: ["websocket", "polling"],
@@ -72,6 +87,8 @@
       });
       socket.on("connect", function () {
         flushQueue();
+        // Listeners refetch on (re)connect: events sent while disconnected are not replayed.
+        notify({ channel: null, payload: { type: "socket.connected" } });
       });
       // A reconnect after a network drop may have missed "tracking.stop": confirm duty.
       socket.io.on("reconnect", syncDuty);
@@ -79,7 +96,7 @@
       // Socket.IO does not retry these on its own.
       socket.on("connect_error", function () {
         setTimeout(function () {
-          if (!socket || socket.connected || !signedIn() || !onDutyNow) return;
+          if (!socket || socket.connected || !signedIn() || !wantSocket()) return;
           window.AlexiosAuth.fetch("/me").catch(function () {}).then(function () { if (socket) socket.connect(); });
         }, RETRY_AUTH_MS);
       });
@@ -88,10 +105,11 @@
         if (!payload) return;
         if (payload.type === "tracking.start") onDuty();
         else if (payload.type === "tracking.stop") offDuty();
+        notify(envelope);
       });
     }).catch(function () {
-      // Client script failed to load: try again shortly while still on duty.
-      setTimeout(function () { if (onDutyNow && !socket) connect(); }, RETRY_AUTH_MS);
+      // Client script failed to load: try again shortly while still wanted.
+      setTimeout(function () { if (wantSocket() && !socket) connect(); }, RETRY_AUTH_MS);
     });
   }
 
@@ -111,7 +129,23 @@
   function offDuty() {
     onDutyNow = false;
     stop();
-    disconnect();
+    if (!wantSocket()) disconnect();   // an open chat keeps the socket
+  }
+
+  function retain(reason) {
+    holders[reason] = true;
+    if (signedIn()) connect();
+  }
+
+  function release(reason) {
+    delete holders[reason];
+    if (!wantSocket()) disconnect();
+  }
+
+  /** Subscribe to every socket envelope; returns an unsubscribe function. */
+  function onEvent(fn) {
+    listeners.push(fn);
+    return function () { listeners = listeners.filter(function (l) { return l !== fn; }); };
   }
 
   function syncDuty() {
@@ -204,6 +238,7 @@
   setInterval(function () {
     if (!signedIn()) {
       dutyChecked = false;
+      holders = {};
       if (onDutyNow || socket) offDuty();
       return;
     }
@@ -232,6 +267,11 @@
     /** Called by clockin-gate.js once the backend accepts the clock-in. */
     onDuty: onDuty,
     /** Called by clockout-gate.js once the backend accepts the clock-out. */
-    offDuty: offDuty
+    offDuty: offDuty,
+    /** Keep the socket open off duty while a live screen is showing (no location is shared). */
+    retain: retain,
+    release: release,
+    onEvent: onEvent,
+    connected: function () { return Boolean(socket && socket.connected); }
   };
 })();
