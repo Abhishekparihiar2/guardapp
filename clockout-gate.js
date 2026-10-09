@@ -336,11 +336,15 @@
       .then(function () {
         state.status = "done";
         state.endedAt = new Date();
+        // Off duty: live-location.js stops GPS and closes the socket.
+        if (window.AlexiosLiveLocation) window.AlexiosLiveLocation.offDuty();
         finishBundleClockOut();
         render();
         if (!early) setTimeout(close, 1400);        // on time: brief confirmation, then home
       })
       .catch(function (err) {
+        // Already clocked out (e.g. on another device): nothing left to track.
+        if (err.code === "NOT_CLOCKED_IN" && window.AlexiosLiveLocation) window.AlexiosLiveLocation.offDuty();
         if (!early || err.code === "NOT_CLOCKED_IN" || err.code === "OUTSIDE_GEOFENCE" || err.code === "ON_BREAK") {
           block(err.message);
           return;

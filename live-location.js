@@ -1,14 +1,15 @@
 /* ============================================================================
  * ALEXIOS Mobile — Live location over Socket.IO (clock-in → clock-out)
  * ----------------------------------------------------------------------------
- * While signed in, the app keeps one socket open to the API. The server says
- * when to share:
+ * The socket exists only while the guard is on duty. Signed in but not
+ * clocked in means no socket at all.
  *
- *   clock in   → server emits "tracking.start" → GPS on, fixes streamed as
- *                "location:update" every SEND_EVERY_MS (acknowledged)
+ *   clock in   → clockin-gate.js calls onDuty() → socket opens, GPS on, fixes
+ *                streamed as "location:update" every SEND_EVERY_MS (acknowledged)
  *   break      → keeps sharing
- *   clock out  → server emits "tracking.stop"  → GPS off
- *   reload     → on connect, GET /mobile/duty decides start / stop
+ *   clock out  → clockout-gate.js calls offDuty() (or the server emits
+ *                "tracking.stop") → GPS off, socket closed
+ *   app open / back in foreground → GET /mobile/duty (plain HTTP) decides
  *
  * Fixes that can't go over the socket (offline, reconnecting, no ack) are
  * queued and sent as one batch to POST /mobile/location once back online.
@@ -35,6 +36,8 @@
   var lastFixAt = 0;
   var fallbackTimer = null;
   var polling = false;
+  var onDutyNow = false;    // what the backend last told us; gates every socket connect
+  var dutyChecked = false;  // initial GET /mobile/duty done for this sign-in
 
   function signedIn() {
     return Boolean(window.AlexiosMobile && window.AlexiosAuth && window.AlexiosAuth.token());
@@ -59,7 +62,8 @@
   function connect() {
     if (socket) return;
     loadClient().then(function () {
-      if (socket || !signedIn()) return;
+      // Duty may have ended while the client script was loading.
+      if (socket || !signedIn() || !onDutyNow) return;
       socket = window.io({
         path: "/socket.io",
         transports: ["websocket", "polling"],
@@ -67,38 +71,56 @@
         auth: function (cb) { cb({ token: window.AlexiosAuth.token() }); }
       });
       socket.on("connect", function () {
-        syncDuty();
         flushQueue();
       });
+      // A reconnect after a network drop may have missed "tracking.stop": confirm duty.
+      socket.io.on("reconnect", syncDuty);
       // Rejected by the auth middleware (usually an expired token): refresh it, then retry.
       // Socket.IO does not retry these on its own.
       socket.on("connect_error", function () {
         setTimeout(function () {
-          if (!socket || socket.connected || !signedIn()) return;
+          if (!socket || socket.connected || !signedIn() || !onDutyNow) return;
           window.AlexiosAuth.fetch("/me").catch(function () {}).then(function () { if (socket) socket.connect(); });
         }, RETRY_AUTH_MS);
       });
       socket.on("event", function (envelope) {
         var payload = envelope && envelope.payload;
         if (!payload) return;
-        if (payload.type === "tracking.start") start();
-        else if (payload.type === "tracking.stop") stop();
+        if (payload.type === "tracking.start") onDuty();
+        else if (payload.type === "tracking.stop") offDuty();
       });
-    }).catch(function () { /* retried by the watchdog below */ });
+    }).catch(function () {
+      // Client script failed to load: try again shortly while still on duty.
+      setTimeout(function () { if (onDutyNow && !socket) connect(); }, RETRY_AUTH_MS);
+    });
   }
 
   function disconnect() {
-    stop();
     if (socket) socket.disconnect();
     socket = null;
+  }
+
+  /* ── Duty: the only thing that opens or closes the socket ──────────────── */
+
+  function onDuty() {
+    onDutyNow = true;
+    connect();
+    start();
+  }
+
+  function offDuty() {
+    onDutyNow = false;
+    stop();
+    disconnect();
   }
 
   function syncDuty() {
     if (!signedIn()) return;
     window.AlexiosMobile.api("/mobile/duty").then(function (duty) {
-      if (duty.state === "on_duty" || duty.state === "on_break") start();
-      else stop();
-    }).catch(function () {});
+      dutyChecked = true;
+      if (duty.state === "on_duty" || duty.state === "on_break") onDuty();
+      else offDuty();
+    }).catch(function () { /* keep the current state; retried on next foreground */ });
   }
 
   /* ── GPS ───────────────────────────────────────────────────────────────── */
@@ -162,7 +184,7 @@
     socket.timeout(ACK_TIMEOUT_MS).emit("location:update", point, function (err, ack) {
       if (err) return enqueue(point);   // no ack in time: send it later in a batch
       lastAck = { at: new Date().toISOString(), ack: ack };
-      if (ack && !ack.ok && ack.code === "NOT_ON_DUTY") stop();
+      if (ack && !ack.ok && ack.code === "NOT_ON_DUTY") offDuty();
     });
   }
 
@@ -177,11 +199,21 @@
     });
   }
 
-  /* Connect once signed in; drop the socket on sign-out. */
+  /* Check duty once after sign-in (local check only, no network while waiting);
+     drop everything on sign-out. */
   setInterval(function () {
-    if (signedIn()) connect();
-    else if (socket) disconnect();
+    if (!signedIn()) {
+      dutyChecked = false;
+      if (onDutyNow || socket) offDuty();
+      return;
+    }
+    if (!dutyChecked) syncDuty();
   }, 3000);
+
+  /* Clocked in or out on another device while the app was in the background. */
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && signedIn()) syncDuty();
+  });
 
   window.AlexiosLiveLocation = {
     status: function () {
@@ -196,6 +228,10 @@
     tracking: function () { return tracking; },
     queued: function () { return queue.length; },
     flush: flushQueue,
-    check: syncDuty
+    check: syncDuty,
+    /** Called by clockin-gate.js once the backend accepts the clock-in. */
+    onDuty: onDuty,
+    /** Called by clockout-gate.js once the backend accepts the clock-out. */
+    offDuty: offDuty
   };
 })();

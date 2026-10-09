@@ -723,6 +723,8 @@
       .then(function () {
         state.status = "done";
         state.done = true;
+        // On duty from now on: live-location.js opens the socket and starts GPS.
+        if (window.AlexiosLiveLocation) window.AlexiosLiveLocation.onDuty();
         startBundleShift();
         render();
       })
