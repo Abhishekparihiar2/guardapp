@@ -61,8 +61,21 @@
     return { icon: ICON.clipboard, tone: "" };
   }
 
+  /** Repeating reports (e.g. hourly checks): due / filed this slot / only while on duty. */
+  function scheduleBadge(schedule) {
+    if (schedule.status === "due") return { text: "Due by " + hhmm(schedule.dueBy), tone: "red" };
+    if (schedule.status === "filed") return { text: "Filed · next " + hhmm(schedule.nextSlotAt), tone: "green" };
+    return { text: "Every " + everyLabel(schedule.everyMinutes) + " on duty", tone: "grey" };
+  }
+
+  function everyLabel(minutes) {
+    if (minutes % 60 === 0) return minutes === 60 ? "hour" : minutes / 60 + " h";
+    return minutes + " min";
+  }
+
   function badgeOf(type, look) {
     if (!type.mobileReady) return { text: "Web portal only", tone: "grey" };
+    if (type.schedule) return scheduleBadge(type.schedule);
     if (look.tone === "red") return { text: "Immediate filing", tone: "red" };
     if (type.approvalRequired) return { text: "Manager review", tone: "amber" };
     return { text: "New entry", tone: "" };
@@ -185,6 +198,7 @@
             var badge = badgeOf(type, look);
             grid.appendChild(el("button", {
               class: "arp-type", type: "button", "data-tone": look.tone || null, "data-disabled": String(!type.mobileReady),
+              "data-due": type.schedule && type.schedule.status === "due" ? "true" : null,
               title: type.mobileReady ? "" : "Needs " + type.blockedBy.join(", ") + ": file it on the web portal",
               onclick: function () { if (type.mobileReady) push(formScreen(type.id, type.name)); }
             }, [
@@ -240,6 +254,13 @@
     var now = new Date(form.now);
 
     if (form.submissionRule === "once" && form.alreadySubmitted) body.appendChild(notice("You have already filed this report. It can only be filed once.", "warn"));
+    if (form.schedule) {
+      var sch = form.schedule;
+      var tally = sch.filed || sch.missed ? " This shift: " + sch.filed + " filed" + (sch.missed ? ", " + sch.missed + " missed" : "") + "." : "";
+      if (sch.status === "due") body.appendChild(notice("Due by " + hhmm(sch.dueBy) + ". This report repeats every " + everyLabel(sch.everyMinutes) + " while you're on duty." + tally, "warn"));
+      else if (sch.status === "filed") body.appendChild(notice("Filed for this slot. The next one opens at " + hhmm(sch.nextSlotAt) + "." + tally, "ok"));
+      else body.appendChild(notice("This report repeats every " + everyLabel(sch.everyMinutes) + " while you're on duty. Clock in to start the schedule.", "ok"));
+    }
     if (!form.sites.length) body.appendChild(notice("You are not assigned to a site this report is set up for.", "error"));
 
     // Filled in for the guard, like the design's header card.

@@ -100,3 +100,6 @@ textarea.arp-control { min-height: 110px; resize: vertical; }
 .arp-status[data-tone="green"] { color: #6ee7b7; }
 .arp-status[data-tone="amber"] { color: #fcd34d; }
 .arp-status[data-tone="red"] { color: #fca5a5; }
+
+/* Repeating report due now (e.g. hourly check): a soft red outline on its card. */
+.arp-type[data-due="true"] { border-color: rgba(248,113,113,.55); box-shadow: 0 0 0 1px rgba(248,113,113,.25), 0 6px 18px rgba(239,68,68,.15); }
