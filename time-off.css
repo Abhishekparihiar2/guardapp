@@ -1,0 +1,139 @@
+/* ALEXIOS Mobile — Time Off (real data)
+   Panel for the "Time Off Request" tab and its request sheet. Same glass
+   surfaces, fonts and spacing as the Claim Shift / Shift Replacement panels. */
+
+.ato-panel { display: flex; flex-direction: column; gap: 16px; padding: 4px 16px 24px; }
+
+/* ── Counts ─────────────────────────────────────────────── */
+.ato-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.ato-stat {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 12px 6px; border-radius: 16px;
+  background: var(--glass-surface, rgba(10,16,28,.8));
+  border: 1px solid var(--muted-border, rgba(255,255,255,.08));
+  backdrop-filter: blur(12px);
+}
+.ato-stat b { font-family: "Rajdhani", sans-serif; font-size: 22px; font-weight: 800; color: var(--ato-tone, #fff); }
+.ato-stat span { font-family: "Inter", sans-serif; font-size: 11px; font-weight: 600; color: rgba(255,255,255,.55); }
+.ato-stat[data-tone="pending"] { --ato-tone: #f59e0b; }
+.ato-stat[data-tone="approved"] { --ato-tone: #22c55e; }
+.ato-stat[data-tone="declined"] { --ato-tone: #ef4444; }
+
+.ato-next {
+  padding: 10px 14px; border-radius: 14px;
+  background: rgba(34,197,94,.1); border: 1px solid rgba(34,197,94,.25);
+  color: rgba(255,255,255,.75); font-family: "Inter", sans-serif; font-size: 12px;
+}
+.ato-next b { color: #fff; }
+
+/* ── Filter pills ───────────────────────────────────────── */
+.ato-filters { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.ato-filters::-webkit-scrollbar { display: none; }
+.ato-filter {
+  flex-shrink: 0; padding: 7px 14px; border-radius: 999px; cursor: pointer;
+  background: transparent; border: 1px solid var(--muted-border, rgba(255,255,255,.12));
+  color: rgba(255,255,255,.6); font-family: "Inter", sans-serif; font-size: 12px; font-weight: 600;
+}
+.ato-filter[data-on="true"] { background: var(--blue-primary, #0ea5e9); border-color: transparent; color: #fff; }
+
+/* ── Request cards ──────────────────────────────────────── */
+.ato-list { display: flex; flex-direction: column; gap: 12px; }
+.ato-card {
+  position: relative; overflow: hidden;
+  padding: 16px 16px 16px 20px; border-radius: 20px;
+  background: var(--glass-surface, rgba(10,16,28,.8));
+  border: 1px solid var(--muted-border, rgba(255,255,255,.08));
+  backdrop-filter: blur(16px);
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  --ato-accent: #f59e0b;
+}
+.ato-card::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: var(--ato-accent); box-shadow: 0 0 12px var(--ato-accent);
+}
+.ato-card[data-status="approved"] { --ato-accent: #22c55e; }
+.ato-card[data-status="declined"] { --ato-accent: #ef4444; }
+.ato-card[data-status="cancelled"] { --ato-accent: rgba(255,255,255,.3); }
+
+.ato-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.ato-range { font-family: "Rajdhani", sans-serif; font-size: 17px; font-weight: 700; color: #fff; }
+.ato-badge {
+  flex-shrink: 0; padding: 3px 10px; border-radius: 999px;
+  font-family: "Inter", sans-serif; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: #f59e0b; background: rgba(245,158,11,.14); border: 1px solid rgba(245,158,11,.35);
+}
+.ato-badge[data-status="approved"] { color: #22c55e; background: rgba(34,197,94,.14); border-color: rgba(34,197,94,.35); }
+.ato-badge[data-status="declined"] { color: #ef4444; background: rgba(239,68,68,.14); border-color: rgba(239,68,68,.35); }
+.ato-badge[data-status="cancelled"] { color: rgba(255,255,255,.55); background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.15); }
+
+.ato-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.ato-chip {
+  padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.75); font-family: "Inter", sans-serif; font-size: 11px; font-weight: 600;
+}
+.ato-notes { margin-top: 10px; color: rgba(255,255,255,.6); font-family: "Inter", sans-serif; font-size: 12px; line-height: 1.45; word-break: break-word; }
+.ato-cancel {
+  margin-top: 12px; padding: 0; background: none; border: 0; cursor: pointer;
+  color: #ef4444; font-family: "Inter", sans-serif; font-size: 12px; font-weight: 700;
+}
+.ato-cancel:disabled { opacity: .5; }
+
+.ato-empty { padding: 28px 12px; text-align: center; }
+.ato-empty-title { color: #fff; font-family: "Inter", sans-serif; font-size: 14px; font-weight: 700; }
+.ato-empty-sub { margin-top: 4px; color: rgba(255,255,255,.5); font-family: "Inter", sans-serif; font-size: 12px; }
+.ato-retry { margin-top: 12px; padding: 8px 16px; border-radius: 10px; border: 1px solid rgba(255,255,255,.2); background: none; color: #fff; cursor: pointer; }
+
+/* ── Buttons ────────────────────────────────────────────── */
+.ato-primary {
+  width: 100%; padding: 15px; border: 0; border-radius: 16px; cursor: pointer;
+  background: var(--blue-primary, #0ea5e9); color: #fff;
+  font-family: "Rajdhani", sans-serif; font-size: 15px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  box-shadow: 0 8px 20px rgba(14,165,233,.3);
+}
+.ato-primary:disabled { opacity: .6; }
+.ato-secondary {
+  width: 100%; padding: 13px; border-radius: 16px; cursor: pointer; background: none;
+  border: 1px solid rgba(255,255,255,.15); color: rgba(255,255,255,.75);
+  font-family: "Rajdhani", sans-serif; font-size: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+
+/* ── Request sheet ──────────────────────────────────────── */
+.ato-sheet-backdrop {
+  position: fixed; inset: 0; z-index: 9000;
+  display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+}
+.ato-sheet {
+  width: 100%; max-width: 480px; max-height: 92dvh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  background: #0a101c; border: 1px solid rgba(255,255,255,.1); border-bottom: 0;
+}
+.ato-sheet-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.ato-sheet-title { font-family: "Rajdhani", sans-serif; font-size: 20px; font-weight: 800; color: #fff; letter-spacing: .04em; }
+.ato-sheet-sub { font-family: "Inter", sans-serif; font-size: 11px; font-weight: 700; color: rgba(255,255,255,.45); letter-spacing: .1em; }
+.ato-x { width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(255,255,255,.15); background: none; color: #fff; font-size: 20px; line-height: 1; cursor: pointer; }
+
+.ato-field-label { margin-top: 8px; font-family: "Inter", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: rgba(255,255,255,.55); }
+.ato-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ato-type {
+  padding: 12px; border-radius: 14px; cursor: pointer;
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.75); font-family: "Rajdhani", sans-serif; font-size: 15px; font-weight: 700;
+}
+.ato-type[data-on="true"] { background: rgba(14,165,233,.18); border-color: var(--blue-primary, #0ea5e9); color: #fff; }
+
+.ato-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.ato-row > div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ato-sheet input,
+.ato-sheet textarea {
+  width: 100%; box-sizing: border-box; padding: 12px; border-radius: 12px;
+  background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12);
+  color: #fff; font-family: "Inter", sans-serif; font-size: 14px; color-scheme: dark;
+}
+.ato-sheet textarea { resize: vertical; }
+.ato-sheet input:focus,
+.ato-sheet textarea:focus { outline: none; border-color: var(--blue-primary, #0ea5e9); }
+.ato-hint { font-family: "Inter", sans-serif; font-size: 11px; color: rgba(255,255,255,.4); }
+.ato-error { min-height: 16px; margin: 4px 0; color: #f87171; font-family: "Inter", sans-serif; font-size: 12px; font-weight: 600; }

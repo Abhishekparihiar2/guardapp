@@ -1,4 +1,4 @@
-/* ALEXIOS Mobile — Claim Shift (design only)
+/* ALEXIOS Mobile — Claim Shift
    Static presentation for the Claim Shift tab. Reuses the Tasks date-strip and
    task-card geometry so the two screens read as one system. No data layer:
    every value below is design mock-up copy. */
@@ -175,3 +175,25 @@
   font-family: "Inter", sans-serif; font-size: 12px;
   color: var(--text-50, rgba(255,255,255,.5)); text-align: center;
 }
+
+/* ── Live data additions ────────────────────────────────── */
+.acs-empty[data-show="true"] { display: flex; }
+.acs-retry {
+  margin-top: 4px; padding: 8px 16px; border-radius: 10px; cursor: pointer;
+  background: none; border: 1px solid rgba(255,255,255,.2); color: #fff;
+}
+.acs-summary {
+  margin: 0 16px 14px; padding: 10px 14px; border-radius: 14px;
+  background: rgba(56,189,248,.1); border: 1px solid rgba(56,189,248,.25);
+  color: #7dd3fc; font-family: "Inter", sans-serif; font-size: 12px; font-weight: 600;
+}
+.acs-notes {
+  margin: -6px 0 14px; color: rgba(255,255,255,.55);
+  font-family: "Inter", sans-serif; font-size: 12px; line-height: 1.45;
+}
+.acs-blocker {
+  margin-top: 10px; color: rgba(255,255,255,.5); text-align: center;
+  font-family: "Inter", sans-serif; font-size: 11px; line-height: 1.4;
+}
+.acs-action:disabled { cursor: default; }
+.acs-day[data-selected="true"][data-empty="true"] { opacity: 1; }

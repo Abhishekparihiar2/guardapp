@@ -1,4 +1,4 @@
-/* ALEXIOS Mobile — Shift Replacement (design only)
+/* ALEXIOS Mobile — Shift Replacement
    Reuses the date strip, card shell and chips from claim-shift.css (.acs-*).
    Only the pieces unique to this tab live here: the assigned-shift accent, the
    REPLACE action, the reason sheet, and the submitted-request card. */
@@ -217,4 +217,11 @@
   background: rgba(255,255,255,.05);
   color: rgba(255,255,255,.3);
   box-shadow: none; cursor: not-allowed;
+}
+
+/* ── Live data additions ────────────────────────────────── */
+.asr-replace:disabled { cursor: default; }
+.asr-error {
+  min-height: 14px; margin-top: 8px; color: #f87171;
+  font-family: "Inter", sans-serif; font-size: 12px; font-weight: 600;
 }
