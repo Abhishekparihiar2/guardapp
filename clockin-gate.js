@@ -7,14 +7,16 @@
  *
  *   1. Read GPS and call POST /mobile/clock-in/check. Outside the site border,
  *      before/after the shift, or already clocked in → explain and stop.
- *   2. Show only the pages the admin enabled for this guard's position
- *      (Clients & Sites → Checklists → Clock In), any of:
- *        Daily Brief · Prior Shift Reports · Firearms & Duty Gear · Uniform & PPE
- *   3. On the last page, POST /mobile/clock-in. When it succeeds the bundle's
- *      own handler runs and the home screen switches to on duty.
+ *   2. Show the pages the admin set up for this site and the guard's position
+ *      (Clients & Sites → Checklists → Clock In), in the admin's order. Each
+ *      page is one of: Daily Brief (this shift's tours, tasks and repeating
+ *      reports), Prior Shift Reports (filed at the site recently) or a
+ *      Checklist (the admin's items to tick, optionally with a photo).
+ *   3. On the last page, POST /mobile/clock-in with each page's ticked items
+ *      and photo. When it succeeds the bundle's own handler runs and the home
+ *      screen switches to on duty.
  *
- * Page content (brief rows, gear, PPE items) is still mock-up copy, and photos
- * are not uploaded yet — the photo tiles only mark that one was taken.
+ * Photos upload as soon as they are taken (kind "clock-in").
  * Desk testing: AlexiosClockInGate.mockLocation(lat, lng) replaces GPS.
  * ========================================================================== */
 (function () {
@@ -30,103 +32,30 @@
     selfie: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/><rect x="2.5" y="2.5" width="19" height="19" rx="4"/></svg>'
   };
 
-  /* ── Mock content ──────────────────────────────────────────────────────── */
-
-  var BRIEF = [
-    {
-      title: "Tours", pill: "2 due", dot: "#3A7BFF",
-      rows: [
-        ["Perimeter Tour A", "12 checkpoints · Tower B exterior", "09:30"],
-        ["Interior Sweep", "8 checkpoints · Floors 4–22", "14:00"]
-      ]
-    },
-    {
-      title: "Tasks", pill: "3 due", dot: "#A78BFA",
-      rows: [
-        ["Complete Site Opening Inspection", "Dispatch task · 3 subtasks", "08:00"],
-        ["Respond to Access Control Alert", "Help desk ticket · Sector A", "09:12"],
-        ["Vehicle Fuel & Mileage Log", "Recurring task", "17:00"]
-      ]
-    },
-    {
-      title: "Reports", pill: "2 due", dot: "#38BDF8",
-      rows: [
-        ["Hourly Activity Log", "Every hour on the hour", "Hourly"],
-        ["End of Shift Summary", "Required before clock out", "17:45"]
-      ]
-    },
-    {
-      title: "Forms", pill: "1 due", dot: "#FBBF24",
-      rows: [
-        ["Visitor Log Reconciliation", "Standard ops form", "16:30"]
-      ]
-    }
-  ];
-
-  var PRIOR = [
-    {
-      kind: "incident", ref: "IR-260908-0044", when: "Yesterday · 4:16 PM",
-      title: "Property Damage — North Perimeter Fence",
-      body: "Approximately four metres of mesh cut low to the ground behind the " +
-            "generator compound. No entry beyond the fence line. Temporary barrier " +
-            "in place pending a maintenance callout. Night shift to keep the " +
-            "compound on the patrol route until the panel is replaced."
-    },
-    {
-      kind: "incident", ref: "IR-260908-0042", when: "Yesterday · 2:46 PM",
-      title: "Suspicious Activity — Staff Entrance",
-      body: "Unfamiliar male in dark hooded jacket photographing the staff entrance " +
-            "and camera positions from the far side of the street. Left westbound " +
-            "when approached. No vehicle observed. Description circulated to the " +
-            "day shift; challenge and log if seen again."
-    },
-    {
-      kind: "maintenance", ref: "MR-260908-0011", when: "Yesterday · 11:20 AM",
-      title: "Loading Dock Door 4 — Sensor Intermittent",
-      body: "Door 4 contact sensor drops off the panel intermittently, showing open " +
-            "while physically closed. Contractor booked for Thursday. Until then " +
-            "the door must be checked physically on every perimeter tour."
-    }
-  ];
-
-  var GEAR = {
-    firearm: { model: "Glock 19 Gen5", serial: "GX-44821" },
-    ammo: [["3", "Magazines"], ["15", "Rounds each"], ["45", "Total rounds"]],
-    nonLethal: [
-      ["Taser", "X26P · Serial TX-9931", "Cartridge seated · charged"],
-      ["OC Spray", "MK-4 · Serial OC-2207", "Seal intact · in date"],
-      ["Baton", '21" Expandable · Serial BT-1180', "Locks and collapses cleanly"]
-    ]
-  };
-
-  var PPE = [
-    "Company-issued shirt and trousers",
-    "Duty boots — black, polished",
-    "Duty belt and holster",
-    "Hi-visibility vest",
-    "Photo ID badge worn and visible",
-    "Radio and earpiece — tested"
-  ];
-
-  /* Screen for each checklist item the admin can enable (Clients & Sites →
-     Checklists). The backend decides which of them this guard gets. */
-  var SCREENS = {
-    "daily-brief":   { id: "brief", type: "daily_brief",   label: "Daily Brief" },
-    "shift-summary": { id: "prior", type: "prior_reports", label: "Prior Shift Reports" },
-    "firearms":      { id: "gear",  type: "gear_log",      label: "Firearms & Duty Gear" },
-    "uniform-ppe":   { id: "ppe",   type: "uniform_ppe",   label: "Uniform & PPE" }
-  };
-
-  /* Steps for the current run, in the order the backend returned them. */
+  /* ── Steps for the current run, in the order the backend returned them ──
+   * Each is one page the admin set up for this site and position (Clients &
+   * Sites → Checklists): { itemKey, type, title, instructions, ackText, items,
+   * photo, brief?, reports? }. type is daily_brief | prior_reports | checklist. */
   var STEPS = [];
 
-  function stepsFrom(checklist) {
-    return checklist
-      .filter(function (item) { return SCREENS[item.itemKey]; })
-      .map(function (item) {
-        var screen = SCREENS[item.itemKey];
-        return { id: screen.id, type: screen.type, label: screen.label, itemKey: item.itemKey };
+  var TYPES = { daily_brief: true, prior_reports: true, checklist: true };
+  var DOTS = { tours: "#3A7BFF", tasks: "#A78BFA", reports: "#38BDF8" };
+
+  /* Company setting (Time Clock → Require photo): the punch itself needs a
+     photo, separate from any checklist page photo. Shown as a last page. */
+  var CLOCK_IN_PHOTO = "__clock_in_photo";
+
+  function stepsFrom(checklist, requirePhoto) {
+    var steps = checklist.filter(function (step) { return TYPES[step.type]; });
+    if (requirePhoto) {
+      steps.push({
+        itemKey: CLOCK_IN_PHOTO, type: "checklist", title: "Clock-in Photo",
+        instructions: "Take a clear selfie at your post. It is saved with your clock-in.",
+        ackText: null, items: [],
+        photo: { required: true, label: "Take a selfie", camera: "front" }
       });
+    }
+    return steps;
   }
 
   /* ── State (per run; nothing persists) ─────────────────────────────────── */
@@ -141,15 +70,22 @@
       error: "",
       clockIn: null,   // { shiftId, location, idempotencyKey } from the pre-check
       index: 0,
-      briefAck: false,
-      priorAck: false,
-      priorOpen: {},
-      photos: { gear: { key: null, previewUrl: null, uploading: false },
-                selfie: { key: null, previewUrl: null, uploading: false } },
-      gearItems: {},
-      ppeItems: {},
+      acks: {},        // itemKey → true once the acknowledgement is ticked
+      checked: {},     // itemKey → { itemId: true }
+      photos: {},      // itemKey → { key, previewUrl, uploading }
+      open: {},        // "itemKey:reportId" → expanded
       done: false
     };
+  }
+
+  function photoOf(step) {
+    if (!state.photos[step.itemKey]) state.photos[step.itemKey] = { key: null, previewUrl: null, uploading: false };
+    return state.photos[step.itemKey];
+  }
+
+  function checkedOf(step) {
+    if (!state.checked[step.itemKey]) state.checked[step.itemKey] = {};
+    return state.checked[step.itemKey];
   }
 
   /* ── DOM helper (same shape as the other add-ons) ──────────────────────── */
@@ -200,10 +136,12 @@
   /* ── Photos ────────────────────────────────────────────────────────────────
    * Uploaded to the server (POST /mobile/uploads/photo) as soon as they are
    * taken; the returned key goes on the clock-in. Phones open the camera
-   * (rear for gear, front for the selfie); desktops open a file picker.
+   * (rear or front, as the admin set for the page); desktops open a file picker.
    * ------------------------------------------------------------------------ */
 
-  function choosePhoto(kind, facing) {
+  function choosePhoto(step) {
+    var facing = step.photo && step.photo.camera === "front" ? "user" : "environment";
+    var kind = step.itemKey;
     var input = el("input", { type: "file", accept: "image/jpeg,image/png,image/webp", capture: facing });
     input.style.display = "none";
     input.addEventListener("change", function () {
@@ -216,7 +154,9 @@
   }
 
   function attachPhoto(kind, file) {
-    var photo = state.photos[kind];
+    var step = STEPS.find(function (st) { return st.itemKey === kind; });
+    if (!step) return Promise.reject(new Error("No page " + kind));
+    var photo = photoOf(step);
     photo.uploading = true;
     state.error = "";
     render();
@@ -286,214 +226,170 @@
 
   /* ── Steps ─────────────────────────────────────────────────────────────── */
 
-  function stepBrief(body) {
-    body.appendChild(el("div", {
-      class: "acg-lead",
-      text: "Everything below must be completed before you clock out. " +
-            "It stays available from the home screen for the rest of your shift."
-    }));
+  function lead(body, text) {
+    if (text) body.appendChild(el("div", { class: "acg-lead", text: text }));
+  }
 
-    BRIEF.forEach(function (group) {
-      var card = el("div", { class: "acg-card" }, [
-        el("div", { class: "acg-card-hd" }, [
-          el("div", { class: "acg-card-title", text: group.title }),
-          el("span", { class: "acg-pill", text: group.pill })
-        ])
-      ]);
-      group.rows.forEach(function (r) {
-        card.appendChild(el("div", { class: "acg-row" }, [
-          el("span", { class: "acg-dot", style: "--acg-dot:" + group.dot }),
-          el("div", { class: "acg-row-main" }, [
-            el("div", { class: "acg-row-t", text: r[0] }),
-            el("div", { class: "acg-row-s", text: r[1] })
-          ]),
-          el("div", { class: "acg-row-time", text: r[2] })
-        ]));
-      });
-      body.appendChild(card);
-    });
-
+  function ackRow(body, step) {
+    if (!step.ackText) return;
     body.appendChild(el("div", { class: "acg-ack" }, [
-      checkRow("I have read and understood today's brief.", state.briefAck, function () {
-        state.briefAck = !state.briefAck;
+      checkRow(step.ackText, state.acks[step.itemKey], function () {
+        state.acks[step.itemKey] = !state.acks[step.itemKey];
         render();
       })
     ]));
   }
 
-  function stepPrior(body) {
-    body.appendChild(el("div", {
-      class: "acg-lead",
-      text: "Incident and maintenance reports filed in the last 24 hours."
-    }));
+  function photoBlock(body, step) {
+    if (!step.photo) return;
+    body.appendChild(el("div", { class: "acg-label", text: "Photo" }));
+    body.appendChild(photoTile(
+      photoOf(step), true, step.photo.label || "Take a photo",
+      step.photo.camera === "front" ? ICON.selfie : ICON.cam,
+      function () { choosePhoto(step); }
+    ));
+  }
 
-    PRIOR.forEach(function (r, i) {
-      var open = !!state.priorOpen[i];
+  function timeText(row) {
+    if (row.timeLabel && !row.time) return row.timeLabel;
+    if (!row.time) return "";
+    var d = new Date(row.time.length === 16 ? row.time + ":00" : row.time);
+    if (isNaN(d)) return row.timeLabel || "";
+    return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+
+  function stepBrief(body, step) {
+    lead(body, step.instructions);
+    var sections = (step.brief && step.brief.sections) || [];
+    var any = false;
+    sections.forEach(function (group) {
+      if (!group.rows.length) return;
+      any = true;
       var card = el("div", { class: "acg-card" }, [
+        el("div", { class: "acg-card-hd" }, [
+          el("div", { class: "acg-card-title", text: group.title }),
+          el("span", { class: "acg-pill", text: group.count + " due" })
+        ])
+      ]);
+      group.rows.forEach(function (r) {
+        card.appendChild(el("div", { class: "acg-row" }, [
+          el("span", { class: "acg-dot", style: "--acg-dot:" + (DOTS[group.key] || "#38BDF8") }),
+          el("div", { class: "acg-row-main" }, [
+            el("div", { class: "acg-row-t", text: r.title }),
+            r.subtitle ? el("div", { class: "acg-row-s", text: r.subtitle }) : null
+          ]),
+          el("div", { class: "acg-row-time", text: timeText(r) })
+        ]));
+      });
+      body.appendChild(card);
+    });
+    if (!any) body.appendChild(el("div", { class: "acg-note", text: "Nothing is scheduled for this shift yet." }));
+    ackRow(body, step);
+  }
+
+  function whenText(iso) {
+    var d = new Date(iso);
+    var today = new Date();
+    var y = new Date(); y.setDate(today.getDate() - 1);
+    var day = d.toDateString() === today.toDateString() ? "Today"
+      : d.toDateString() === y.toDateString() ? "Yesterday"
+      : d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return day + " · " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  }
+
+  function stepPrior(body, step) {
+    lead(body, step.instructions);
+    var items = (step.reports && step.reports.items) || [];
+    items.forEach(function (r) {
+      var key = step.itemKey + ":" + r.id;
+      var open = !!state.open[key];
+      body.appendChild(el("div", { class: "acg-card" }, [
         el("div", { class: "acg-row" }, [
           el("button", {
             class: "acg-rep", "data-open": String(open), type: "button",
-            onclick: function () { state.priorOpen[i] = !open; render(); }
+            onclick: function () { state.open[key] = !open; render(); }
           }, [
             el("div", { class: "acg-rep-top" }, [
-              el("span", { class: "acg-tag", "data-kind": r.kind, text: r.kind.toUpperCase() }),
+              el("span", { class: "acg-tag", "data-kind": r.kind === "incident" ? "incident" : "maintenance", text: r.kind.toUpperCase() }),
               el("span", { class: "acg-ref", text: r.ref })
             ]),
-            el("div", { class: "acg-row-t", text: r.title }),
-            el("div", { class: "acg-row-s", text: r.when }),
-            el("div", { class: "acg-rep-body", text: r.body,
-              style: "margin-top:8px" }),
-            el("div", { class: "acg-more", text: open ? "Show less" : "Read more" })
+            el("div", { class: "acg-row-t", text: r.title + (r.severity ? " — " + r.severity.charAt(0).toUpperCase() + r.severity.slice(1) : "") }),
+            el("div", { class: "acg-row-s", text: whenText(r.submittedAt) + (r.filedBy ? " · " + r.filedBy : "") }),
+            r.summary ? el("div", { class: "acg-rep-body", text: r.summary, style: "margin-top:8px" }) : null,
+            r.summary ? el("div", { class: "acg-more", text: open ? "Show less" : "Read more" }) : null
           ])
+        ])
+      ]));
+    });
+    if (!items.length) {
+      var hours = (step.reports && step.reports.hours) || 24;
+      body.appendChild(el("div", { class: "acg-note", text: "No reports were filed at this site in the last " + hours + " hours." }));
+    }
+    ackRow(body, step);
+  }
+
+  function stepChecklist(body, step) {
+    lead(body, step.instructions);
+    var ticks = checkedOf(step);
+    if (step.items.length) {
+      var required = step.items.filter(function (i) { return i.required; });
+      var card = el("div", { class: "acg-card" }, [
+        el("div", { class: "acg-card-hd" }, [
+          el("div", { class: "acg-card-title", text: step.title }),
+          el("span", { class: "acg-pill", text: countTicked(step) + " of " + required.length })
         ])
       ]);
-      body.appendChild(card);
-    });
-
-    body.appendChild(el("div", {
-      class: "acg-note",
-      text: "Hourly activity logs are excluded from this brief by site policy."
-    }));
-
-    body.appendChild(el("div", { class: "acg-ack" }, [
-      checkRow("I have reviewed all reports from the previous 24 hours.",
-        state.priorAck, function () { state.priorAck = !state.priorAck; render(); })
-    ]));
-  }
-
-  function stepGear(body) {
-    body.appendChild(el("div", {
-      class: "acg-lead",
-      text: "Pre-shift audit for this armed post. Confirm each item against " +
-            "what you have been issued."
-    }));
-
-    /* Firearm + ammunition */
-    var arms = el("div", { class: "acg-card" }, [
-      el("div", { class: "acg-card-hd" }, [
-        el("div", { class: "acg-card-title", text: "Firearm" }),
-        el("span", { class: "acg-pill", text: "Armed post" })
-      ]),
-      el("div", { class: "acg-field" }, [
-        el("div", { class: "acg-field-l", text: "Weapon" }),
-        el("div", { class: "acg-field-v", text: GEAR.firearm.model }),
-        el("div", { class: "acg-field-sub" }, [
-          el("span", { text: "Serial " + GEAR.firearm.serial }),
-          el("span", { class: "acg-issued", text: "ISSUED TO YOU" })
-        ])
-      ]),
-      el("div", { class: "acg-field" }, [
-        el("div", { class: "acg-field-l", text: "Ammunition count" }),
-        el("div", { class: "acg-counts" }, GEAR.ammo.map(function (a, i) {
-          return el("div", {
-            class: "acg-count-box", "data-total": String(i === GEAR.ammo.length - 1)
+      step.items.forEach(function (item) {
+        var on = !!ticks[item.id];
+        card.appendChild(el("div", { class: "acg-row" }, [
+          el("button", {
+            class: "acg-check", "data-on": String(on), type: "button",
+            style: "background:none;border:none;padding:0",
+            onclick: function () { ticks[item.id] = !on; render(); }
           }, [
-            el("div", { class: "acg-count-n", text: a[0] }),
-            el("div", { class: "acg-count-l", text: a[1] })
-          ]);
-        }))
-      ])
-    ]);
-    body.appendChild(arms);
-    body.appendChild(el("button", {
-      class: "acg-link", type: "button",
-      text: "Serial number does not match — report a discrepancy"
-    }));
-
-    /* Non-lethal equipment */
-    var nl = el("div", { class: "acg-card" }, [
-      el("div", { class: "acg-card-hd" }, [
-        el("div", { class: "acg-card-title", text: "Non-lethal equipment" })
-      ])
-    ]);
-    GEAR.nonLethal.forEach(function (item, i) {
-      var on = !!state.gearItems[i];
-      nl.appendChild(el("div", { class: "acg-row" }, [
-        el("button", {
-          class: "acg-check", "data-on": String(on), type: "button",
-          style: "background:none;border:none;padding:0",
-          onclick: function () { state.gearItems[i] = !on; render(); }
-        }, [
-          el("span", { class: "acg-box", html: ICON.check }),
-          el("span", {}, [
-            el("div", { class: "acg-row-t", text: item[0] }),
-            el("div", { class: "acg-row-s", text: item[1] }),
-            el("div", { class: "acg-row-s", text: item[2] })
+            el("span", { class: "acg-box", html: ICON.check }),
+            el("span", {}, [
+              el("div", { class: "acg-row-t", text: item.label + (item.required ? "" : " (optional)") }),
+              item.detail ? el("div", { class: "acg-row-s", text: item.detail }) : null
+            ])
           ])
-        ])
-      ]));
-    });
-    body.appendChild(nl);
-
-    body.appendChild(el("div", { class: "acg-label", text: "Gear photo" }));
-    body.appendChild(photoTile(
-      state.photos.gear, true, "Photograph your gear laid out", ICON.cam,
-      function () { choosePhoto("gear", "environment"); }
-    ));
+        ]));
+      });
+      body.appendChild(card);
+    }
+    photoBlock(body, step);
+    ackRow(body, step);
   }
 
-  function stepPpe(body) {
-    body.appendChild(el("div", {
-      class: "acg-lead",
-      text: "Confirm you are in full company-issued uniform, then take a " +
-            "photo for the shift record."
-    }));
-
-    var card = el("div", { class: "acg-card" }, [
-      el("div", { class: "acg-card-hd" }, [
-        el("div", { class: "acg-card-title", text: "Uniform & PPE" }),
-        el("span", { class: "acg-pill", text: countPpe() + " of " + PPE.length })
-      ])
-    ]);
-    PPE.forEach(function (label, i) {
-      var on = !!state.ppeItems[i];
-      card.appendChild(el("div", { class: "acg-row" }, [
-        el("button", {
-          class: "acg-check", "data-on": String(on), type: "button",
-          style: "background:none;border:none;padding:0",
-          onclick: function () { state.ppeItems[i] = !on; render(); }
-        }, [
-          el("span", { class: "acg-box", html: ICON.check }),
-          el("span", { class: "acg-row-t", text: label })
-        ])
-      ]));
-    });
-    body.appendChild(card);
-
-    body.appendChild(el("div", { class: "acg-label", text: "Compliance selfie" }));
-    body.appendChild(photoTile(
-      state.photos.selfie, true, "Take a selfie in uniform", ICON.selfie,
-      function () { choosePhoto("selfie", "user"); }
-    ));
+  function countTicked(step) {
+    var ticks = checkedOf(step);
+    return step.items.filter(function (i) { return i.required && ticks[i.id]; }).length;
   }
 
-  function countPpe() {
-    return PPE.filter(function (_, i) { return state.ppeItems[i]; }).length;
-  }
+  /* ── Gating (the backend checks the same on clock-in) ──────────────────── */
 
-  /* ── Gating (presentation only — nothing is enforced server-side) ──────── */
+  function itemsDone(step) {
+    return step.items.every(function (i) { return !i.required || checkedOf(step)[i.id]; });
+  }
 
   function stepReady() {
     var s = STEPS[state.index];
     if (!s) return true;
-    if (s.type === "daily_brief") return state.briefAck;
-    if (s.type === "prior_reports") return state.priorAck;
-    if (s.type === "gear_log") {
-      return Boolean(state.photos.gear.key) &&
-        GEAR.nonLethal.every(function (_, i) { return state.gearItems[i]; });
-    }
-    if (s.type === "uniform_ppe") return Boolean(state.photos.selfie.key) && countPpe() === PPE.length;
+    if (s.ackText && !state.acks[s.itemKey]) return false;
+    if (s.type === "checklist" && !itemsDone(s)) return false;
+    if (s.photo && !photoOf(s).key) return false;
     return true;
   }
 
   function hintFor() {
     var s = STEPS[state.index];
     if (stepReady()) return "";
-    if (s.type === "daily_brief" || s.type === "prior_reports") {
-      return "Acknowledge to continue";
-    }
-    if (s.type === "gear_log") return "Confirm every item and add a photo";
-    return "Confirm every item and add a selfie";
+    var needs = [];
+    if (s.type === "checklist" && !itemsDone(s)) needs.push("confirm every item");
+    if (s.photo && !photoOf(s).key) needs.push("add a photo");
+    if (s.ackText && !state.acks[s.itemKey]) needs.push("acknowledge");
+    var text = needs.join(", ").replace(/, ([^,]*)$/, " and $1");
+    return text.charAt(0).toUpperCase() + text.slice(1) + " to continue";
   }
 
   /* ── Render ────────────────────────────────────────────────────────────── */
@@ -548,14 +444,13 @@
 
     var s = STEPS[state.index];
     u.back.dataset.hidden = String(state.index === 0);
-    u.sub.textContent = s.label.toUpperCase();
+    u.sub.textContent = s.title.toUpperCase();
     u.count.textContent = (state.index + 1) + "/" + STEPS.length;
     u.fill.style.width = Math.round(((state.index + 1) / STEPS.length) * 100) + "%";
 
-    if (s.type === "daily_brief") stepBrief(u.body);
-    else if (s.type === "prior_reports") stepPrior(u.body);
-    else if (s.type === "gear_log") stepGear(u.body);
-    else if (s.type === "uniform_ppe") stepPpe(u.body);
+    if (s.type === "daily_brief") stepBrief(u.body, s);
+    else if (s.type === "prior_reports") stepPrior(u.body, s);
+    else stepChecklist(u.body, s);
 
     var ready = stepReady() && state.status !== "submitting";
     var last = state.index === STEPS.length - 1;
@@ -661,13 +556,6 @@
     });
   }
 
-  /** Server key of the photo uploaded for this page, if it needs one. */
-  function photoKeyFor(step) {
-    if (step.type === "gear_log") return state.photos.gear.key || undefined;
-    if (step.type === "uniform_ppe") return state.photos.selfie.key || undefined;
-    return undefined;
-  }
-
   function block(message) {
     state.status = "blocked";
     state.message = message;
@@ -688,7 +576,7 @@
       })
       .then(function (r) {
         if (!r.result.canClockIn) { block(r.result.reason.message); return; }
-        STEPS = stepsFrom(r.result.checklist || []);
+        STEPS = stepsFrom(r.result.checklist || [], r.result.requirePhoto);
         state.clockIn = { shiftId: r.result.shift.id, location: r.location, idempotencyKey: newIdempotencyKey() };
         state.status = "steps";
         if (STEPS.length === 0) { submitClockIn(); return; }
@@ -703,8 +591,15 @@
     if (STEPS.length) render();
     else renderNoticeNow("CLOCKING IN", "Recording your clock-in…");
 
-    var checklist = STEPS.map(function (step) {
-      return { itemKey: step.itemKey, photoKey: photoKeyFor(step) };
+    var punchPhoto = STEPS.find(function (step) { return step.itemKey === CLOCK_IN_PHOTO; });
+    var checklist = STEPS.filter(function (step) { return step !== punchPhoto; }).map(function (step) {
+      var entry = { itemKey: step.itemKey };
+      if (step.items.length) {
+        var ticks = checkedOf(step);
+        entry.checked = step.items.filter(function (i) { return ticks[i.id]; }).map(function (i) { return i.id; });
+      }
+      if (step.photo && photoOf(step).key) entry.photoKey = photoOf(step).key;
+      return entry;
     });
 
     // Re-read the location: the guard may have moved while filling the pages.
@@ -717,6 +612,7 @@
           accuracyM: location.accuracyM,
           shiftId: state.clockIn.shiftId,
           idempotencyKey: state.clockIn.idempotencyKey,   // same key on retry → no duplicate punch
+          photoKey: punchPhoto ? photoOf(punchPhoto).key || undefined : undefined,
           checklist: checklist
         });
       })
@@ -729,7 +625,7 @@
         render();
       })
       .catch(function (err) {
-        if (err.code === "OUTSIDE_GEOFENCE" || err.code === "SHIFT_ENDED" || err.code === "NO_ACTIVE_SHIFT") {
+        if (err.code === "OUTSIDE_GEOFENCE" || err.code === "SHIFT_ENDED" || err.code === "NO_ACTIVE_SHIFT" || err.code === "SHIFT_NOT_FOUND") {
           block(err.message);
           return;
         }
@@ -824,7 +720,7 @@
 
   window.AlexiosClockInGate = {
     open: startClockIn, close: close,
-    /** Testing: attach a File to "gear" or "selfie" without the native picker. */
+    /** Testing: attach a File to a page (its itemKey) without the native picker. */
     attachPhoto: function (kind, file) { return attachPhoto(kind, file); },
     steps: function () { return STEPS; },
     /** Desk testing: AlexiosClockInGate.mockLocation(26.7993, 75.8184), or null to use GPS. */

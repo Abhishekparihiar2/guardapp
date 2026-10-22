@@ -30,21 +30,10 @@
     sent: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg>'
   };
 
-  /* Admin-applied flags, keyed by task title. Mock-up copy. */
-  var FLAGS = {
-    "Complete Site Opening Inspection": {
-      kind: "task", state: "late",
-      by: "J. Morrison", at: "2h ago",
-      due: "Due 08:00 · completed 09:24",
-      reason: "weather"                 // already explained — awaiting review
-    },
-    "Respond to Access Control Alert": {
-      kind: "task", state: "missed",
-      by: "J. Morrison", at: "35m ago",
-      due: "Due 09:30 · no activity recorded",
-      reason: null                      // unexplained — this is what locks
-    }
-  };
+  /* Admin-applied Late/Missed flags, keyed by task title. Empty until the backend
+     serves them: the design's sample flags ("Respond to Access Control Alert")
+     locked every real guard out of Forms, Reports, Start Tour and Clock Out. */
+  var FLAGS = {};
 
   var REASONS = [
     { value: "weather", label: "Weather" },

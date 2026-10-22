@@ -1,8 +1,12 @@
 /* ============================================================================
- * ALEXIOS Mobile — Field Reporting Hub
+ * ALEXIOS Mobile — Field Reporting Hub + Standard Forms
  * ----------------------------------------------------------------------------
  * Add-on layered over the built bundle. No build step, no bundle edits.
- * The Home "Reports" tile opens real screens instead of the bundle's mock-up:
+ * The Home "Reports" and "Forms" tiles open real screens instead of the
+ * bundle's mock-ups. Both run on the same form engine (FLOWS below); Forms use
+ * /mobile/forms, /mobile/forms/:id, /mobile/forms/submissions/:id and photo kind "form".
+ *
+ * Reports:
  *
  *   Hub     GET  /mobile/reports                    report types I can file + my recent reports
  *   Form    GET  /mobile/reports/types/:id          the admin's fields, my sites, auto-filled info
@@ -23,8 +27,36 @@
     clock: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     shield: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3z"/><path d="M12 9v4M12 16h.01"/></svg>',
     wrench: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4 2.5-2.5z"/></svg>',
-    clipboard: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 11h6M9 15h4"/></svg>'
+    clipboard: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4h6v3H9zM9 11h6M9 15h4"/></svg>',
+    checkDoc: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="m9 12 3 3 8-9"/></svg>',
+    person: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3.5"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>',
+    car: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 1 1-4 0v-4l2-5a2 2 0 0 1 2-1h14a2 2 0 0 1 2 1l2 5v4a2 2 0 1 1-4 0"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>',
+    wrenchLg: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4 2.5-2.5z"/></svg>',
+    chevron: '<svg width="9" height="15" viewBox="0 0 10 17" fill="none"><path d="M1.5 1.5L8.5 8.5L1.5 15.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
   };
+
+  /* Reports and Standard Forms share this engine; `flow` is whichever the guard opened. */
+  var FLOWS = {
+    reports: {
+      key: "reports", photoKind: "report", list: false,
+      hubPath: function () { return "/mobile/reports"; },
+      typePath: function (id) { return "/mobile/reports/types/" + encodeURIComponent(id); },
+      submissionPath: function (id) { return "/mobile/reports/submissions/" + encodeURIComponent(id); },
+      hubTitle: "FIELD REPORTING HUB", hubSub: "SECURE DIGITAL DOCUMENTATION",
+      noun: "report", Noun: "Report", newSub: "NEW REPORT", submitLabel: "Submit report", filed: "Report filed.",
+      emptyTypes: "No report types are set up for your sites yet.", emptyRecent: "Reports you file appear here."
+    },
+    forms: {
+      key: "forms", photoKind: "form", list: true,
+      hubPath: function () { return "/mobile/forms"; },
+      typePath: function (id) { return "/mobile/forms/" + encodeURIComponent(id); },
+      submissionPath: function (id) { return "/mobile/forms/submissions/" + encodeURIComponent(id); },
+      hubTitle: "STANDARD FORMS", hubSub: "OPERATIONAL TEMPLATES",
+      noun: "form", Noun: "Form", newSub: "NEW FORM", submitLabel: "Submit form", filed: "Form submitted.",
+      emptyTypes: "No standard forms are set up for your sites yet. Your admin publishes them in Forms.", emptyRecent: "Forms you submit appear here."
+    }
+  };
+  var flow = FLOWS.reports;
 
   var STATUS_TONE = { Submitted: "", Approved: "green", "Manager review": "amber", Rejected: "red", Draft: "grey" };
   var SEVERITIES = ["low", "medium", "high", "critical"];
@@ -61,6 +93,15 @@
     return { icon: ICON.clipboard, tone: "" };
   }
 
+  /** Standard form icon from its name: visitors, vehicles, maintenance, else a checked document. */
+  function formLookOf(type) {
+    var text = (type.name + " " + (type.description || "")).toLowerCase();
+    if (/visitor|guest|entry|badge/.test(text)) return ICON.person;
+    if (/vehicle|fleet|car|patrol car|parking/.test(text)) return ICON.car;
+    if (/mainten|repair|damage|facilit/.test(text)) return ICON.wrenchLg;
+    return ICON.checkDoc;
+  }
+
   /** Repeating reports (e.g. hourly checks): due / filed this slot / only while on duty. */
   function scheduleBadge(schedule) {
     if (schedule.status === "due") return { text: "Due by " + hhmm(schedule.dueBy), tone: "red" };
@@ -88,7 +129,7 @@
   /** Uploads one photo / signature for a report; resolves to its key. */
   function uploadPhoto(blob, name) {
     var form = new FormData();
-    form.append("kind", "report");
+    form.append("kind", flow.photoKind);
     form.append("file", blob, name);
     return window.AlexiosAuth.fetch("/mobile/uploads/photo", { method: "POST", body: form }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (json) {
@@ -124,7 +165,7 @@
     var sub = el("div", { class: "acg-sub" });
     var body = el("div", { class: "acg-body" });
     var foot = el("div", { class: "acg-foot" });
-    var overlay = el("div", { class: "acg-overlay", "data-open": "false", "data-flow": "reports" }, [
+    var overlay = el("div", { class: "acg-overlay", "data-open": "false", "data-flow": flow.key }, [
       el("div", { class: "acg-head" }, [el("div", { class: "acg-head-row" }, [back, el("div", { class: "acg-head-txt" }, [title, sub])])]),
       body,
       foot
@@ -136,6 +177,7 @@
 
   function push(screen, data) {
     build();
+    UI.overlay.dataset.flow = flow.key;
     stack.push(screen);
     UI.overlay.dataset.open = "true";
     show(data);
@@ -185,12 +227,33 @@
 
   function hubScreen() {
     return {
-      title: "FIELD REPORTING HUB",
-      sub: "SECURE DIGITAL DOCUMENTATION",
-      load: function () { return api("/mobile/reports"); },
+      title: flow.hubTitle,
+      sub: flow.hubSub,
+      load: function () { return api(flow.hubPath()); },
       render: function (body, foot, hub) {
         if (!hub.types.length) {
-          body.appendChild(el("div", { class: "arp-empty", text: "No report types are set up for your sites yet." }));
+          body.appendChild(el("div", { class: "arp-empty", text: flow.emptyTypes }));
+        } else if (flow.list) {
+          // Standard Forms: the design's list of operational templates.
+          var list = el("div", { class: "afm-list" });
+          hub.types.forEach(function (type) {
+            var look = formLookOf(type);
+            list.appendChild(el("button", {
+              class: "afm-row", type: "button", "data-disabled": String(!type.mobileReady),
+              title: type.mobileReady ? "" : "Needs " + type.blockedBy.join(", ") + ": fill it in on the web portal",
+              onclick: function () { if (type.mobileReady) push(formScreen(type.id, type.name)); }
+            }, [
+              el("span", { class: "afm-icon", html: look }),
+              el("span", { class: "afm-main" }, [
+                el("span", { class: "afm-name", text: type.name }),
+                el("span", { class: "afm-desc", text: !type.mobileReady ? "Web portal only" : type.description || (type.approvalRequired ? "Goes to your manager for review" : "Operational template") })
+              ]),
+              type.approvalRequired && type.mobileReady ? el("span", { class: "arp-pill", "data-tone": "amber", text: "Review" }) : null,
+              type.submissionRule === "once" && type.mobileReady ? el("span", { class: "arp-pill", "data-tone": "grey", text: "Once" }) : null,
+              el("span", { class: "afm-chev", html: ICON.chevron })
+            ]));
+          });
+          body.appendChild(list);
         } else {
           var grid = el("div", { class: "arp-grid" });
           hub.types.forEach(function (type) {
@@ -213,7 +276,7 @@
 
         body.appendChild(el("div", { class: "arp-section", text: "Recent submissions" }));
         if (!hub.recent.length) {
-          body.appendChild(el("div", { class: "arp-empty", text: "Reports you file appear here." }));
+          body.appendChild(el("div", { class: "arp-empty", text: flow.emptyRecent }));
           return;
         }
         hub.recent.forEach(function (r) {
@@ -235,8 +298,8 @@
   function formScreen(typeId, name) {
     return {
       title: name.toUpperCase(),
-      sub: "NEW REPORT",
-      load: function () { return api("/mobile/reports/types/" + encodeURIComponent(typeId)); },
+      sub: flow.newSub,
+      load: function () { return api(flow.typePath(typeId)); },
       render: function (body, foot, form) { renderForm(body, form); }
     };
   }
@@ -253,7 +316,7 @@
     };
     var now = new Date(form.now);
 
-    if (form.submissionRule === "once" && form.alreadySubmitted) body.appendChild(notice("You have already filed this report. It can only be filed once.", "warn"));
+    if (form.submissionRule === "once" && form.alreadySubmitted) body.appendChild(notice("You have already filed this " + flow.noun + ". It can only be filed once.", "warn"));
     if (form.schedule) {
       var sch = form.schedule;
       var tally = sch.filed || sch.missed ? " This shift: " + sch.filed + " filed" + (sch.missed ? ", " + sch.missed + " missed" : "") + "." : "";
@@ -261,7 +324,7 @@
       else if (sch.status === "filed") body.appendChild(notice("Filed for this slot. The next one opens at " + hhmm(sch.nextSlotAt) + "." + tally, "ok"));
       else body.appendChild(notice("This report repeats every " + everyLabel(sch.everyMinutes) + " while you're on duty. Clock in to start the schedule.", "ok"));
     }
-    if (!form.sites.length) body.appendChild(notice("You are not assigned to a site this report is set up for.", "error"));
+    if (!form.sites.length) body.appendChild(notice("You are not assigned to a site this " + flow.noun + " is set up for.", "error"));
 
     // Filled in for the guard, like the design's header card.
     var siteValue;
@@ -289,7 +352,7 @@
 
     var hint = state.hint = el("div", { class: "acg-foot-hint" });
     var blocked = !form.sites.length || (form.submissionRule === "once" && form.alreadySubmitted);
-    var submit = footButton("Submit report", function () { if (!blocked) submitReport(form, state, submit, hint); });
+    var submit = footButton(flow.submitLabel, function () { if (!blocked) submitReport(form, state, submit, hint); });
     submit.dataset.disabled = String(blocked);
     UI.foot.appendChild(hint);
   }
@@ -534,9 +597,9 @@
       var body = { idempotencyKey: state.key, answers: answers };
       if (state.siteId) body.siteId = state.siteId;
       if (state.severity) body.severity = state.severity;
-      return api("/mobile/reports/types/" + encodeURIComponent(form.id), body);
+      return api(flow.typePath(form.id), body);
     }).then(function (result) {
-      flash = { text: "Report filed." + (result.submission.statusLabel === "Manager review" ? " It is waiting for manager review." : ""), kind: "ok" };
+      flash = { text: flow.filed + (result.submission.statusLabel === "Manager review" ? " It is waiting for manager review." : ""), kind: "ok" };
       replace(detailScreen(result.submission.id), result.submission);
     }).catch(function (err) {
       // "Label: problem" from the server names the field to highlight.
@@ -549,7 +612,7 @@
     }).then(function () {
       sending = false;
       button.dataset.disabled = "false";
-      button.textContent = "Submit report";
+      button.textContent = flow.submitLabel;
     });
   }
 
@@ -567,15 +630,15 @@
 
   function detailScreen(id) {
     return {
-      title: "REPORT",
+      title: flow.Noun.toUpperCase(),
       sub: "SUBMISSION DETAIL",
       titleFrom: function (r) { return (r.reportName + " #" + r.id).toUpperCase(); },
-      load: function () { return api("/mobile/reports/submissions/" + encodeURIComponent(id)); },
+      load: function () { return api(flow.submissionPath(id)); },
       render: function (body, foot, r) {
         var statusTone = STATUS_TONE[r.statusLabel] === "" ? "green" : STATUS_TONE[r.statusLabel];
         body.appendChild(el("div", { class: "arp-info" }, [
-          infoRow("Report ID", r.reportName + " #" + r.id),
-          infoRow("Type", r.category || "Report"),
+          infoRow(flow.Noun + " ID", r.reportName + " #" + r.id),
+          infoRow("Type", r.category || (flow.list ? "Standard form" : "Report")),
           el("div", { class: "arp-info-row" }, [el("span", { class: "arp-info-k", text: "Status" }), el("span", { class: "arp-info-v arp-status", "data-tone": statusTone || null, text: r.statusLabel.toUpperCase() })]),
           infoRow("Submitted by", r.submittedBy),
           infoRow("Time", hhmm(r.submittedAt)),
@@ -613,18 +676,40 @@
     return false;
   }
 
+  /** The Home "Forms" tile ("Forms · Standard Ops"). */
+  function isFormsTile(node) {
+    for (var n = node, depth = 0; n && n !== document.body && depth < 6; n = n.parentElement, depth++) {
+      var text = (n.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+      if (text.indexOf("forms") === 0 && text.length < 30) return true;
+    }
+    return false;
+  }
+
+  function signedIn() { return window.AlexiosMobile && window.AlexiosAuth && window.AlexiosAuth.token(); }
+
+  function openFlow(key, screen) {
+    flow = FLOWS[key];
+    stack = [];
+    push(screen ? screen() : hubScreen());
+  }
+
   document.addEventListener("click", function (e) {
     if (UI && UI.overlay.contains(e.target)) return;
-    if (!isReportsTile(e.target) || !window.AlexiosMobile || !window.AlexiosAuth || !window.AlexiosAuth.token()) return;
+    var key = isReportsTile(e.target) ? "reports" : isFormsTile(e.target) ? "forms" : null;
+    if (!key || !signedIn()) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    stack = [];
-    push(hubScreen());
+    openFlow(key);
   }, true);
 
   window.AlexiosReports = {
-    open: function () { stack = []; push(hubScreen()); },
-    openType: function (id, name) { stack = []; push(formScreen(id, name || "Report")); },
-    openSubmission: function (id) { stack = []; push(detailScreen(id)); }
+    open: function () { openFlow("reports"); },
+    openType: function (id, name) { openFlow("reports", function () { return formScreen(id, name || "Report"); }); },
+    openSubmission: function (id) { openFlow("reports", function () { return detailScreen(id); }); }
+  };
+  window.AlexiosForms = {
+    open: function () { openFlow("forms"); },
+    openForm: function (id, name) { openFlow("forms", function () { return formScreen(id, name || "Form"); }); },
+    openSubmission: function (id) { openFlow("forms", function () { return detailScreen(id); }); }
   };
 })();

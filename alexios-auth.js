@@ -11,6 +11,7 @@
  * exists on the backend (pending client decision).
  *
  * Exposes window.AlexiosAuth: { configure, user, token, fetch, logout }.
+ * The Log Out button lives in logout.js.
  * ========================================================================== */
 (function () {
   "use strict";
@@ -114,8 +115,22 @@
     });
   }
 
-  function logout() {
-    return fetch(CONFIG.apiBase + "/auth/logout", { method: "POST", credentials: "include" })
+  /**
+   * Ends the session on the server (refresh token revoked, cookie cleared) and forgets it here.
+   * The refresh token also goes in the body for app shells that don't keep cookies. A native
+   * shell passes its push token as options.deviceToken so this phone stops getting notifications.
+   * Signs out locally even when the server can't be reached.
+   */
+  function logout(options) {
+    var body = {};
+    if (memorySession && memorySession.refreshToken) body.refreshToken = memorySession.refreshToken;
+    if (options && options.deviceToken) body.deviceToken = options.deviceToken;
+    return fetch(CONFIG.apiBase + "/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", "X-Client": "mobile" },
+      body: JSON.stringify(body),
+    })
       .catch(function () {})
       .then(function () {
         writeSession(null);

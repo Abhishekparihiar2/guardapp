@@ -1,36 +1,34 @@
 /* ============================================================================
- * ALEXIOS Mobile — Incidents
+ * ALEXIOS Mobile — Incidents (real data)
  * ----------------------------------------------------------------------------
  * Add-on layered over the built bundle. No build step, no bundle edits.
- * Requires alexios-ui.css + incidents.css.
+ * Requires alexios-ui.css + incidents.css, and clockin-gate.js (window.AlexiosMobile).
  *
  * Home → Incidents opens:
- *   1. REPORT AN INCIDENT — incident types published by the admin portal
- *   2. MY REPORTS         — this officer's submissions, grouped by type
+ *   1. REPORT AN INCIDENT — incident types the admin publishes in Report Settings
+ *   2. MY REPORTS         — this officer's incident reports, filterable by date
  *
- * Selecting a type renders the form the admin authored for it (Form Builder),
- * field-for-field and in order. Submitting queues the report; if the device is
- * offline the report is held locally and flushed when connectivity returns.
+ * Picking a type loads its form: the admin's own Form Builder fields, or the
+ * backend's standard incident form (when, where, what happened, people,
+ * who was called, photos). Every incident has a severity that starts at the
+ * type's and the officer can change. Filing alerts managers straight away.
  *
- * Also fixes the Home tile, which in the shipped bundle navigates to Chat.
+ * Offline: a report filed without a connection is held on the device, photos
+ * included, and sent when the connection returns. It carries its idempotency
+ * key from the start, so a retry can never file it twice.
  *
- * Field types rendered (phase 1):
- *   short long number divider checkbox single multi
- *   date time datetime photo photo_gallery site
- * Anything else the admin publishes renders as an explicit "not supported yet"
- * block rather than silently vanishing from the form.
- *
- * Backend: window.AlexiosIncidents.configure({ useMock:false, apiBase:'…' })
- *   GET  /api/incident-categories?status=active -> [{id,code,name,description,
- *          severity,region,status,form:{fields:[{id,type,label,required,
- *          helpText,options}]}}]
- *   GET  /api/me/incident-reports               -> [report]
- *   POST /api/incident-reports {categoryId,values,createdAt} -> {id,reference}
+ * Backend (all under /api/v1, guard token):
+ *   GET  /mobile/incidents                 types + my last 10
+ *   GET  /mobile/incidents/mine?from&to    my reports (ISO instants)
+ *   GET  /mobile/incidents/:typeId         fields, sites, default severity
+ *   POST /mobile/incidents/:typeId         {idempotencyKey, siteId, severity, answers}
+ *   GET  /mobile/incidents/submissions/:id one report with answers + photos
+ *   POST /mobile/uploads/photo (kind=incident) → photo key, before submitting
  * ========================================================================== */
 (function () {
   "use strict";
 
-  var CONFIG = { useMock: true, apiBase: "/api", authToken: null, maxPhotos: 6 };
+  var CONFIG = { maxPhotos: 6 };
 
   /* ── Icons ─────────────────────────────────────────────────────────────── */
 
@@ -50,305 +48,185 @@
     off:   '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l22 22M16.7 11.1A6 6 0 0 1 19 13M8.5 8.6A10 10 0 0 0 2 13m3.5 3.5A14 14 0 0 1 12 15m0 5h.01"/></svg>'
   };
 
-  /* ── Catalog (what the admin portal publishes) ─────────────────────────── */
-
-  var MOCK_CATEGORIES = [
-    {
-      id: "IC-01", code: "INC-FIRE", name: "Fire or Smoke Outbreak",
-      description: "Any visible flame, smoke, or activated fire alarm on site.",
-      severity: "Critical", region: "All", status: "active",
-      form: { fields: [
-        { id: "f1", type: "datetime", label: "Incident Date & Time", required: true },
-        { id: "f2", type: "site", label: "Site", required: true },
-        { id: "f3", type: "single", label: "Fire alarm activated?", required: true,
-          options: ["Yes — alarm sounding", "Yes — silenced", "No"] },
-        { id: "f4", type: "long", label: "Description", required: true,
-          helpText: "What you saw, where, and what you did. Facts only." },
-        { id: "f5", type: "multi", label: "Services notified", required: false,
-          options: ["Fire brigade", "Site supervisor", "Building management", "Police"] },
-        { id: "f6", type: "checkbox", label: "Area evacuated", required: false },
-        { id: "f7", type: "photo", label: "Photos", required: false }
-      ] }
-    },
-    {
-      id: "IC-02", code: "INC-MED", name: "Medical Emergency",
-      description: "Injury or illness requiring first aid or ambulance response.",
-      severity: "Critical", region: "All", status: "active",
-      form: { fields: [
-        { id: "f1", type: "datetime", label: "Incident Date & Time", required: true },
-        { id: "f2", type: "site", label: "Site", required: true },
-        { id: "f3", type: "single", label: "Person affected", required: true,
-          options: ["Member of public", "Client staff", "Contractor", "Security officer"] },
-        { id: "f4", type: "long", label: "Description", required: true },
-        { id: "f5", type: "checkbox", label: "Ambulance called", required: false },
-        { id: "f6", type: "short", label: "Responding unit / reference", required: false,
-          helpText: "Ambulance call sign or dispatch reference, if given." },
-        { id: "f7", type: "photo", label: "Photos", required: false }
-      ] }
-    },
-    {
-      id: "IC-03", code: "INC-TRESP", name: "Trespassing / Unauthorised Access",
-      description: "Entry to a restricted area by a person without authorisation.",
-      severity: "High", region: "All", status: "active",
-      form: { fields: [
-        { id: "f1", type: "datetime", label: "Incident Date & Time", required: true },
-        { id: "f2", type: "site", label: "Site", required: true },
-        { id: "f3", type: "short", label: "Access point", required: true,
-          helpText: "Door, gate or checkpoint where entry occurred." },
-        { id: "f4", type: "number", label: "Number of individuals", required: false },
-        { id: "f5", type: "long", label: "Description", required: true },
-        { id: "f6", type: "single", label: "Outcome", required: true,
-          options: ["Escorted off site", "Left voluntarily", "Police attended", "Still on site"] },
-        { id: "f7", type: "photo", label: "Photos", required: false }
-      ] }
-    },
-    {
-      id: "IC-04", code: "INC-THEFT", name: "Theft or Property Loss",
-      description: "Suspected or confirmed removal of property from the site.",
-      severity: "High", region: "All", status: "active",
-      form: { fields: [
-        { id: "f1", type: "datetime", label: "Incident Date & Time", required: true },
-        { id: "f2", type: "site", label: "Site", required: true },
-        { id: "d1", type: "divider", label: "Property" },
-        { id: "f3", type: "long", label: "Items involved", required: true },
-        { id: "f4", type: "number", label: "Estimated value", required: false,
-          helpText: "Local currency. Leave blank if unknown." },
-        { id: "d2", type: "divider", label: "Circumstances" },
-        { id: "f5", type: "long", label: "Description", required: true },
-        { id: "f6", type: "checkbox", label: "CCTV footage available", required: false },
-        { id: "f7", type: "photo", label: "Photos", required: false }
-      ] }
-    },
-    {
-      id: "IC-05", code: "INC-DAMAGE", name: "Property Damage",
-      description: "Damage to building fabric, fittings, vehicles or equipment.",
-      severity: "Medium", region: "All", status: "active",
-      form: { fields: [
-        { id: "f1", type: "datetime", label: "Incident Date & Time", required: true },
-        { id: "f2", type: "site", label: "Site", required: true },
-        { id: "f3", type: "single", label: "Damage type", required: true,
-          options: ["Vandalism", "Accidental", "Weather", "Wear / failure", "Unknown"] },
-        { id: "f4", type: "long", label: "Description", required: true },
-        { id: "f5", type: "checkbox", label: "Area made safe", required: false },
-        { id: "f6", type: "photo_gallery", label: "Photos", required: false,
-          helpText: "Attach existing photos from your device." }
-      ] }
-    },
-    {
-      id: "IC-06", code: "INC-SUSP", name: "Suspicious Activity",
-      description: "Behaviour warranting a log entry but no immediate response.",
-      severity: "Low", region: "All", status: "active",
-      form: { fields: [
-        { id: "f1", type: "datetime", label: "Incident Date & Time", required: true },
-        { id: "f2", type: "site", label: "Site", required: true },
-        { id: "f3", type: "long", label: "Description", required: true,
-          helpText: "Describe behaviour, not appearance." },
-        { id: "f4", type: "time", label: "First observed", required: false },
-        { id: "f5", type: "photo", label: "Photos", required: false }
-      ] }
-    }
-  ];
-
-  /* ── Seed reports (demo only) ────────────────────────────────
-   * Sample submissions so MY REPORTS shows what filed reports look like rather
-   * than an empty state. Written to the store once, on first run, and only
-   * while the store is empty — a real report the officer files is never
-   * touched. Clear them with AlexiosIncidents.clearDemoReports().
-   * ---------------------------------------------------------------------- */
-
+  var SEVERITIES = ["low", "medium", "high", "critical"];
   var HOUR = 3600 * 1000;
 
-  function agoIso(hours) {
-    return new Date(Date.now() - hours * HOUR).toISOString();
-  }
+  function cap(s) { s = String(s || ""); return s ? s[0].toUpperCase() + s.slice(1) : ""; }
 
-  function seedReports() {
-    return [
-      {
-        id: "demo-1", reference: "IR-260908-0042", categoryId: "IC-06",
-        createdAt: agoIso(2), status: "synced", demo: true,
-        values: {
-          f1: agoIso(2.4), f2: "Ritz-Carlton Tower B",
-          f3: "Unfamiliar male in dark hooded jacket photographing the staff " +
-              "entrance and camera positions from the far side of the street. " +
-              "Left westbound when approached. No vehicle observed.",
-          f4: "22:40", f5: []
-        }
-      },
-      {
-        id: "demo-2", reference: "IR-260907-0038", categoryId: "IC-03",
-        createdAt: agoIso(27), status: "synced", demo: true,
-        values: {
-          f1: agoIso(27.5), f2: "Harbor Point Logistics",
-          f3: "Loading Dock Door", f4: 2,
-          f5: "Two individuals entered through a dock door propped open by a " +
-              "delivery crew. Both stated they were looking for the courier " +
-              "office. Escorted to the gate house and off site without incident.",
-          f6: "Escorted off site", f7: []
-        }
-      },
-      {
-        id: "demo-3", reference: "IR-260905-0031", categoryId: "IC-04",
-        createdAt: agoIso(74), status: "synced", demo: true,
-        values: {
-          f1: agoIso(74.5), f2: "Meridian Financial Plaza",
-          f3: "Dell laptop and docking station from hot desk 14, floor 12",
-          f4: 1250,
-          f5: "Equipment reported missing at shift handover. Floor was accessed " +
-              "twice overnight on cleaning credentials. Tenant IT notified and " +
-              "the asset tag has been flagged.",
-          f6: true, f7: []
-        }
-      },
-      {
-        id: "demo-4", reference: "IR-260908-0044", categoryId: "IC-05",
-        createdAt: agoIso(0.5), status: "pending", demo: true,
-        values: {
-          f1: agoIso(0.7), f2: "North Perimeter Fence",
-          f3: "Vandalism",
-          f4: "Approximately four metres of mesh cut low to the ground behind " +
-              "the generator compound. No entry beyond the fence line. Temporary " +
-              "barrier in place pending a maintenance callout.",
-          f5: true, f6: []
-        }
-      },
-      {
-        id: "demo-5", reference: "IR-260903-0022", categoryId: "IC-02",
-        createdAt: agoIso(122), status: "synced", demo: true,
-        values: {
-          f1: agoIso(122.3), f2: "Ritz-Carlton Tower B",
-          f3: "Member of public", 
-          f4: "Visitor collapsed in the north lobby shortly after entering. " +
-              "Conscious and breathing throughout. First aid administered until " +
-              "paramedics arrived and took over care.",
-          f5: true, f6: "AMB-4471", f7: []
-        }
-      }
-    ];
-  }
-
-  /* ── Local store ───────────────────────────────────────────────────────── */
+  /* ── Device store: drafts and the outgoing queue ─────────────────────────
+   * Only what hasn't reached the server lives here. Filed reports always come
+   * from the backend, so My Reports is the same on every device.
+   * ---------------------------------------------------------------------- */
 
   var Store = (function () {
-    var K_REPORTS = "alexios.incidents.reports.v1";
+    var K_QUEUE = "alexios.incidents.queue.v1";
     var K_DRAFT = "alexios.incidents.draft.";
-    var K_SEQ = "alexios.incidents.seq.v1";
     var memory = null; // fallback when localStorage is blocked or full
+
+    // The mock build kept demo reports on the device; they are not real filings.
+    try {
+      ["alexios.incidents.reports.v1", "alexios.incidents.seeded.v1", "alexios.incidents.seq.v1"].forEach(function (k) { localStorage.removeItem(k); });
+    } catch (e) { /* storage blocked */ }
 
     function read() {
       if (memory) return memory;
-      try {
-        var raw = localStorage.getItem(K_REPORTS);
-        return raw ? JSON.parse(raw) : [];
-      } catch (e) { return []; }
+      try { var raw = localStorage.getItem(K_QUEUE); return raw ? JSON.parse(raw) : []; }
+      catch (e) { return []; }
     }
     function write(list) {
-      try { localStorage.setItem(K_REPORTS, JSON.stringify(list)); memory = null; }
+      try { localStorage.setItem(K_QUEUE, JSON.stringify(list)); memory = null; }
       catch (e) { memory = list; }   // quota hit — hold in memory for this session
     }
-    function nextRef() {
-      var n = 1;
-      try { n = parseInt(localStorage.getItem(K_SEQ) || "1", 10) || 1; } catch (e) {}
-      try { localStorage.setItem(K_SEQ, String(n + 1)); } catch (e) {}
-      var d = new Date();
-      var stamp = String(d.getFullYear()).slice(2) +
-        ("0" + (d.getMonth() + 1)).slice(-2) + ("0" + d.getDate()).slice(-2);
-      return "IR-" + stamp + "-" + ("000" + n).slice(-4);
-    }
-    /* Demo rows, written once. An officer's own reports are never overwritten:
-       we only seed when the store is empty and has not been seeded before. */
-    function seedOnce() {
-      var K_SEEDED = "alexios.incidents.seeded.v1";
-      try {
-        if (localStorage.getItem(K_SEEDED)) return;
-        if (read().length) { localStorage.setItem(K_SEEDED, "1"); return; }
-        write(seedReports());
-        localStorage.setItem(K_SEEDED, "1");
-      } catch (e) { if (!read().length) write(seedReports()); }
-    }
-
     return {
-      all: read,
-      seedOnce: seedOnce,
-      clearDemo: function () {
-        write(read().filter(function (r) { return !r.demo; }));
+      queue: read,
+      enqueue: function (item) { var l = read().filter(function (q) { return q.idempotencyKey !== item.idempotencyKey; }); l.unshift(item); write(l); },
+      update: function (key, patch) {
+        write(read().map(function (q) { return q.idempotencyKey === key ? Object.assign(q, patch) : q; }));
       },
-      byCategory: function (id) {
-        return read().filter(function (r) { return r.categoryId === id; });
+      dequeue: function (key) { write(read().filter(function (q) { return q.idempotencyKey !== key; })); },
+      saveDraft: function (typeId, values) {
+        try { localStorage.setItem(K_DRAFT + typeId, JSON.stringify(values)); } catch (e) {}
       },
-      add: function (report) { var l = read(); l.unshift(report); write(l); return report; },
-      update: function (id, patch) {
-        var l = read();
-        for (var i = 0; i < l.length; i++) {
-          if (l[i].id === id) { Object.assign(l[i], patch); break; }
-        }
-        write(l);
+      loadDraft: function (typeId) {
+        try { var raw = localStorage.getItem(K_DRAFT + typeId); return raw ? JSON.parse(raw) : null; }
+        catch (e) { return null; }
       },
-      nextRef: nextRef,
-      saveDraft: function (catId, values) {
-        try { localStorage.setItem(K_DRAFT + catId, JSON.stringify(values)); } catch (e) {}
-      },
-      loadDraft: function (catId) {
-        try {
-          var raw = localStorage.getItem(K_DRAFT + catId);
-          return raw ? JSON.parse(raw) : null;
-        } catch (e) { return null; }
-      },
-      clearDraft: function (catId) {
-        try { localStorage.removeItem(K_DRAFT + catId); } catch (e) {}
+      clearDraft: function (typeId) {
+        try { localStorage.removeItem(K_DRAFT + typeId); } catch (e) {}
       }
     };
   })();
 
   /* ── API ───────────────────────────────────────────────────────────────── */
 
-  function req(method, path, body) {
-    var headers = { "Content-Type": "application/json" };
-    if (CONFIG.authToken) headers.Authorization = "Bearer " + CONFIG.authToken;
-    return fetch(CONFIG.apiBase + path, {
-      method: method, headers: headers, body: body ? JSON.stringify(body) : undefined
-    }).then(function (res) {
-      if (!res.ok) throw new Error("Request failed (" + res.status + ")");
-      return res.status === 204 ? null : res.json();
-    });
+  function mobile() { return window.AlexiosMobile; }
+  function signedIn() { return !!(window.AlexiosAuth && mobile()); }
+  function api(path, body) {
+    if (!mobile()) return Promise.reject(new Error("You are not signed in."));
+    return mobile().api(path, body);
+  }
+  function newKey() { return mobile().newIdempotencyKey(); }
+
+  /** No server answer at all (vs. the server saying no): the report should wait on the device. */
+  function isOffline(err) {
+    return !err.code && (!navigator.onLine || /No connection/i.test(err.message || ""));
   }
 
   var Api = {
-    categories: function () {
-      if (!CONFIG.useMock) return req("GET", "/incident-categories?status=active");
-      return new Promise(function (r) {
-        setTimeout(function () { r(JSON.parse(JSON.stringify(MOCK_CATEGORIES))); }, 200);
-      });
+    hub: function () { return api("/mobile/incidents"); },
+    type: function (id) { return api("/mobile/incidents/" + encodeURIComponent(id)); },
+    mine: function (range) {
+      var q = [];
+      if (range[0]) q.push("from=" + encodeURIComponent(range[0].toISOString()));
+      if (range[1]) q.push("to=" + encodeURIComponent(range[1].toISOString()));
+      return api("/mobile/incidents/mine" + (q.length ? "?" + q.join("&") : ""));
     },
-    submit: function (report) {
-      if (!CONFIG.useMock) return req("POST", "/incident-reports", report);
-      return new Promise(function (resolve, reject) {
-        setTimeout(function () {
-          if (!navigator.onLine) reject(new Error("offline"));
-          else resolve({ id: report.id, reference: report.reference });
-        }, 500);
-      });
+    submission: function (id) { return api("/mobile/incidents/submissions/" + encodeURIComponent(id)); },
+    submit: function (typeId, payload) { return api("/mobile/incidents/" + encodeURIComponent(typeId), payload); },
+    /** One photo (a data URL held on the device) → its upload key. */
+    upload: function (dataUrl) {
+      var form = new FormData();
+      form.append("kind", "incident");
+      form.append("file", dataUrlToBlob(dataUrl), "incident.jpg");
+      return window.AlexiosAuth.fetch("/mobile/uploads/photo", { method: "POST", body: form }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (json) {
+          if (!res.ok) {
+            var err = new Error((json && json.message) || "Photo upload failed (" + res.status + ")");
+            err.code = (json && json.error && json.error.code) || "UPLOAD_FAILED";
+            throw err;
+          }
+          return json.data.key;
+        });
+      }, function () { throw new Error("No connection to the server. Try again."); });
+    },
+    photo: function (ref) {
+      return window.AlexiosAuth.fetch("/mobile/uploads/photo/" + ref.kind + "/" + encodeURIComponent(ref.fileName))
+        .then(function (res) { return res.ok ? res.blob() : null; });
     }
   };
 
-  /* Sites come from the Site Configuration store when it is present, so the
-     two features stay consistent instead of keeping rival site lists. */
-  function siteOptions() {
-    try {
-      var raw = localStorage.getItem("alexios.siteConfig.v1");
-      if (raw) {
-        var db = JSON.parse(raw);
-        if (db && db.sites && db.sites.length) {
-          return db.sites.map(function (s) { return { value: s.name, sub: s.address }; });
-        }
-      }
-    } catch (e) {}
-    return [
-      { value: "Ritz-Carlton Tower B", sub: "Floors 4–22, Downtown Core" },
-      { value: "Meridian Financial Plaza", sub: "1400 Harbour Street" },
-      { value: "Harbor Point Logistics", sub: "Pier 9, East Terminal" }
-    ];
+  function dataUrlToBlob(dataUrl) {
+    var parts = String(dataUrl).split(",");
+    var mime = (parts[0].match(/:(.*?);/) || [])[1] || "image/jpeg";
+    var bin = atob(parts[1] || "");
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mime });
   }
+
+  /* ── Sending a report (now, or later from the queue) ───────────────────── */
+
+  function isPhotoType(t) { return t === "photo" || t === "photo_high" || t === "photo_gallery"; }
+
+  /**
+   * Uploads any photos not yet uploaded, then files the report. Photo keys are
+   * remembered on the item, so a retry after a dropped connection doesn't
+   * upload them again.
+   */
+  function send(item) {
+    item.uploaded = item.uploaded || {};
+    var photoFields = item.fields.filter(function (f) { return isPhotoType(f.type) && (item.values[f.key] || []).length; });
+    var chain = Promise.resolve();
+    photoFields.forEach(function (f) {
+      if (item.uploaded[f.key]) return;
+      chain = chain.then(function () {
+        return Promise.all(item.values[f.key].map(Api.upload)).then(function (keys) {
+          item.uploaded[f.key] = keys;
+          if (item.queued) Store.update(item.idempotencyKey, { uploaded: item.uploaded });
+        });
+      });
+    });
+    return chain.then(function () {
+      var answers = {};
+      item.fields.forEach(function (f) {
+        var v = item.values[f.key];
+        if (f.type === "divider") return;
+        if (isPhotoType(f.type)) {
+          var keys = item.uploaded[f.key] || [];
+          if (keys.length) answers[f.key] = f.type === "photo_gallery" ? keys : keys[0];
+          return;
+        }
+        if (isBlank(v) && f.type !== "checkbox") return;
+        if (f.type === "datetime") answers[f.key] = new Date(v).toISOString();
+        else if (f.type === "number") answers[f.key] = Number(v);
+        else if (f.type === "checkbox") answers[f.key] = !!v;
+        else answers[f.key] = v;
+      });
+      var payload = { idempotencyKey: item.idempotencyKey, severity: item.severity, answers: answers };
+      if (item.siteId) payload.siteId = item.siteId;
+      return Api.submit(item.typeId, payload);
+    });
+  }
+
+  var flushing = false;
+  function flushQueue() {
+    var waiting = Store.queue().filter(function (q) { return !q.error; });
+    if (flushing || !waiting.length || !navigator.onLine || !signedIn()) return Promise.resolve();
+    flushing = true;
+    var sent = 0;
+    return waiting.reduce(function (p, item) {
+      return p.then(function () {
+        return send(item).then(function () {
+          Store.dequeue(item.idempotencyKey);
+          Store.clearDraft(item.typeId);
+          sent++;
+        }).catch(function (err) {
+          // Still no connection: keep it. The server refused it: keep it, and say why.
+          if (!isOffline(err)) Store.update(item.idempotencyKey, { error: err.message || "The server refused this report." });
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      flushing = false;
+      refreshHomeTile();
+      if (!sent) return;
+      if (UI.overlay && UI.overlay.dataset.open === "true") {
+        toast(sent + (sent === 1 ? " report" : " reports") + " sent.", "ok");
+        if (UI.stack.length === 1) UI.stack[0]();
+      }
+    });
+  }
+
+  window.addEventListener("online", function () { flushQueue(); });
 
   /* ── Helpers ───────────────────────────────────────────────────────────── */
 
@@ -374,11 +252,19 @@
       " · " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   }
 
-  function localDateTimeValue() {
-    var d = new Date();
-    var pad = function (v) { return ("0" + v).slice(-2); };
+  function pad(v) { return ("0" + v).slice(-2); }
+
+  function localDateTimeValue(d) {
+    d = d || new Date();
     return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
       "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+  }
+
+  /** IR-YYMMDD-0131: the filing date and the server's id, so the officer can quote it. */
+  function referenceOf(id, iso) {
+    var d = new Date(iso);
+    var stamp = isNaN(d) ? "" : String(d.getFullYear()).slice(2) + pad(d.getMonth() + 1) + pad(d.getDate()) + "-";
+    return "IR-" + stamp + ("000" + id).slice(-4);
   }
 
   function isBlank(v) {
@@ -388,8 +274,15 @@
     return String(v).trim() === "";
   }
 
-  /* Photos are downscaled before they are held locally — full-resolution
-     evidence goes to the backend on sync, not into localStorage. */
+  /* Server status → chip. */
+  function chipOf(statusLabel) {
+    if (statusLabel === "Rejected") return { state: "rejected", text: "REJECTED" };
+    if (statusLabel === "Manager review") return { state: "review", text: "IN REVIEW" };
+    if (statusLabel === "Approved") return { state: "synced", text: "APPROVED" };
+    return { state: "synced", text: "FILED" };
+  }
+
+  /* Photos are downscaled before they are held on the device or uploaded. */
   function shrink(file, maxPx, quality) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
@@ -487,30 +380,43 @@
     UI.timer = setTimeout(function () { UI.toast.dataset.open = "false"; }, 3400);
   }
 
+  function loading(text) {
+    UI.body.textContent = "";
+    UI.body.appendChild(el("div", { class: "asc-empty", html: ICON.spin + "<div></div>" }));
+    UI.body.lastChild.lastChild.textContent = text;
+  }
+
+  function failed(err, retry) {
+    UI.body.textContent = "";
+    UI.body.appendChild(el("div", { class: "asc-empty", text: (err && err.message) || "Something went wrong." }));
+    UI.body.appendChild(el("button", { class: "asc-btn", "data-kind": "ghost", text: "RETRY", onclick: retry }));
+  }
+
   /* ── Screen 1: incident types + my reports ─────────────────────────────── */
 
   /* Which zone the list screen is showing. Module-level so the choice
      survives opening a report and coming back. */
   var listTab = "report";
+  var hubCache = null;
 
   function screenList() {
     setHeader("Incidents", "Report and review");
     setFooter(null);
-    UI.body.textContent = "";
-    UI.body.appendChild(el("div", { class: "asc-empty", html: ICON.spin + "<div>Loading incident types…</div>" }));
+    if (!hubCache) loading("Loading incident types…");
+    else renderList(hubCache);
 
-    Api.categories().then(function (cats) {
-      renderList(cats.filter(function (c) { return c.status !== "archived"; }));
+    Api.hub().then(function (hub) {
+      hubCache = hub;
+      if (UI.stack[UI.stack.length - 1] === screenList) renderList(hub);
+      paintHomeTile(hub);
     }).catch(function (e) {
-      UI.body.textContent = "";
-      UI.body.appendChild(el("div", { class: "asc-empty", text: e.message || "Could not load incident types." }));
-      UI.body.appendChild(el("button", { class: "asc-btn", "data-kind": "ghost", text: "RETRY", onclick: screenList }));
+      if (!hubCache) failed(e, screenList);
     });
   }
 
   /* Tab strip plus whichever zone is selected. Re-rendered in place on a tab
      change, so switching tabs never pushes a screen onto the stack. */
-  function renderList(active) {
+  function renderList(hub) {
     UI.body.textContent = "";
 
     if (!navigator.onLine) {
@@ -520,47 +426,55 @@
       ]));
     }
 
-    var mine = Store.all();
+    var queued = Store.queue();
     var tabs = el("div", { class: "ain-tabs" });
     [
       { key: "report", label: "Report an Incident" },
-      { key: "mine", label: "My Reports" + (mine.length ? " · " + mine.length : "") }
+      { key: "mine", label: "My Reports" + (queued.length ? " · " + queued.length + " waiting" : "") }
     ].forEach(function (t) {
       tabs.appendChild(el("button", {
         class: "ain-tab", "data-on": String(listTab === t.key), text: t.label,
         onclick: function () {
           if (listTab === t.key) return;
           listTab = t.key;
-          renderList(active);
+          renderList(hub);
         }
       }));
     });
     UI.body.appendChild(tabs);
 
-    if (listTab === "report") zoneTypes(active);
-    else zoneReports(active, mine);
+    if (listTab === "report") zoneTypes(hub.types);
+    else zoneReports(queued);
   }
 
-  function zoneTypes(active) {
-    if (!active.length) {
+  function zoneTypes(types) {
+    if (!types.length) {
       UI.body.appendChild(el("div", {
         class: "asc-empty",
-        text: "No incident types have been published for your region yet."
+        text: "No incident types have been published yet. Ask your supervisor to add them in Report Settings."
       }));
       return;
     }
-    active.forEach(function (cat) {
+    // Most serious first, then by name.
+    types.slice().sort(function (a, b) {
+      return SEVERITIES.indexOf(b.severity) - SEVERITIES.indexOf(a.severity) || a.name.localeCompare(b.name);
+    }).forEach(function (type) {
+      var sev = cap(type.severity);
       UI.body.appendChild(el("button", {
-        class: "ain-type", "data-sev": cat.severity,
-        onclick: function () { push(function () { screenForm(cat); }); }
+        class: "ain-type", "data-sev": sev, "data-locked": String(!type.mobileReady),
+        onclick: function () {
+          if (!type.mobileReady) { toast("This incident type has to be filed on the web portal (" + type.blockedBy.join(", ") + ").", "err"); return; }
+          push(function () { screenForm(type); });
+        }
       }, [
         el("div", { class: "ain-type-body" }, [
           el("div", { class: "ain-type-top" }, [
-            el("div", { class: "ain-type-name", text: cat.name }),
-            el("span", { class: "ain-sev", "data-sev": cat.severity, text: cat.severity.toUpperCase() })
+            el("div", { class: "ain-type-name", text: type.name }),
+            el("span", { class: "ain-sev", "data-sev": sev, text: sev.toUpperCase() })
           ]),
-          el("div", { class: "ain-type-code", text: cat.code }),
-          cat.description ? el("div", { class: "ain-type-desc", text: cat.description }) : null
+          el("div", { class: "ain-type-code", text: type.code + (type.group ? " · " + type.group : "") }),
+          type.description ? el("div", { class: "ain-type-desc", text: type.description }) : null,
+          !type.mobileReady ? el("div", { class: "ain-type-desc", text: "Web portal only" }) : null
         ]),
         el("div", { class: "asc-chev", html: ICON.chev })
       ]));
@@ -568,8 +482,8 @@
   }
 
   /* ── Date filter ───────────────────────────────────────────────────────
-   * Narrows MY REPORTS to a filed-date range. "all" is the resting state, so
-   * the list looks untouched until the officer asks for a range.
+   * Narrows MY REPORTS to a filed-date range, asked of the server in the
+   * officer's own local days. "all" is the resting state.
    * -------------------------------------------------------------------- */
 
   var PRESETS = [
@@ -585,14 +499,13 @@
   function startOfDay(d) { var x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
   function endOfDay(d) { var x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
 
-  /* Resolves the filter to [from, to] timestamps, or null for no bound. */
+  /* Resolves the filter to [from, to] instants, or null for no bound. */
   function filterRange(f) {
     var now = new Date();
     if (f.preset === "today") return [startOfDay(now), endOfDay(now)];
     if (f.preset === "7" || f.preset === "30") {
       var days = parseInt(f.preset, 10);
-      var from = startOfDay(new Date(now.getTime() - (days - 1) * 24 * HOUR));
-      return [from, endOfDay(now)];
+      return [startOfDay(new Date(now.getTime() - (days - 1) * 24 * HOUR)), endOfDay(now)];
     }
     if (f.preset === "custom") {
       return [
@@ -609,97 +522,73 @@
     return true;
   }
 
-  function applyFilter(list, f) {
-    if (!filterActive(f)) return list;
-    var r = filterRange(f), from = r[0], to = r[1];
-    return list.filter(function (rep) {
-      var t = new Date(rep.createdAt);
-      if (isNaN(t)) return false;
-      if (from && t < from) return false;
-      if (to && t > to) return false;
-      return true;
-    });
-  }
-
   function filterLabel(f) {
     if (!filterActive(f)) return "All dates";
     if (f.preset === "custom") {
-      /* yyyy-mm-dd (input value) -> mm/dd/yyyy */
-      var d = function (v) {
-        if (!v) return "";
-        var p = v.split("-");
-        return p[1] + "/" + p[2] + "/" + p[0];
-      };
+      var d = function (v) { if (!v) return ""; var p = v.split("-"); return p[1] + "/" + p[2] + "/" + p[0]; };
       if (f.from && f.to) return d(f.from) + " – " + d(f.to);
       return f.from ? "From " + d(f.from) : "Until " + d(f.to);
     }
-    for (var i = 0; i < PRESETS.length; i++) {
-      if (PRESETS[i].value === f.preset) return PRESETS[i].label;
-    }
+    for (var i = 0; i < PRESETS.length; i++) if (PRESETS[i].value === f.preset) return PRESETS[i].label;
     return "All dates";
   }
 
-  function zoneReports(active, mine) {
-    if (!mine.length) {
-      UI.body.appendChild(el("div", {
-        class: "asc-empty",
-        text: "You haven't filed any incident reports. Pick a type on the Report an Incident tab to start one."
-      }));
-      return;
-    }
-
-    var shown = applyFilter(mine, reportFilter);
+  function zoneReports(queued) {
     var on = filterActive(reportFilter);
-
+    var count = el("span", { text: "Loading…" });
     UI.body.appendChild(el("div", { class: "ain-toolbar" }, [
-      el("div", { class: "ain-toolbar-sum" }, [
-        el("span", {
-          text: on ? shown.length + " of " + mine.length + " reports"
-                   : mine.length + " reports"
-        }),
-        el("span", { class: "ain-toolbar-range", text: filterLabel(reportFilter) })
-      ]),
+      el("div", { class: "ain-toolbar-sum" }, [count, el("span", { class: "ain-toolbar-range", text: filterLabel(reportFilter) })]),
       el("button", {
         class: "ain-filter", "data-on": String(on), type: "button",
         "aria-label": "Filter reports by date",
         html: ICON.filter + "<span>Filter</span>",
-        onclick: function () { openDateFilter(active); }
+        onclick: openDateFilter
       })
     ]));
 
-    if (!shown.length) {
-      UI.body.appendChild(el("div", {
-        class: "asc-empty",
-        text: "No reports filed in this date range."
-      }));
-      UI.body.appendChild(el("button", {
-        class: "asc-btn", "data-kind": "ghost", text: "CLEAR FILTER",
-        onclick: function () {
-          reportFilter = { preset: "all", from: "", to: "" };
-          renderList(active);
-        }
-      }));
-      return;
+    // Reports still on this device come first: they are what needs attention.
+    if (queued.length) {
+      UI.body.appendChild(el("div", { class: "ain-divider" }, [el("span", { text: "Waiting to send · " + queued.length })]));
+      queued.forEach(function (item) { UI.body.appendChild(queuedRow(item)); });
     }
 
-    active.forEach(function (cat) {
-      var rows = shown.filter(function (r) { return r.categoryId === cat.id; });
-      if (!rows.length) return;
-      UI.body.appendChild(el("div", { class: "ain-divider" }, [
-        el("span", { text: cat.name + " · " + rows.length })
-      ]));
-      rows.forEach(function (rep) {
-        UI.body.appendChild(reportRow(rep, cat));
+    var host = el("div", { class: "ain-replist" }, [el("div", { class: "asc-empty", html: ICON.spin + "<div>Loading your reports…</div>" })]);
+    UI.body.appendChild(host);
+
+    Api.mine(filterRange(reportFilter)).then(function (res) {
+      host.textContent = "";
+      var items = res.items;
+      count.textContent = items.length + (items.length === 1 ? " report" : " reports") + (items.length >= 100 ? " (latest 100)" : "");
+      if (!items.length) {
+        host.appendChild(el("div", {
+          class: "asc-empty",
+          text: on ? "No reports filed in this date range." : "You haven't filed any incident reports. Pick a type on the Report an Incident tab to start one."
+        }));
+        if (on) host.appendChild(el("button", {
+          class: "asc-btn", "data-kind": "ghost", text: "CLEAR FILTER",
+          onclick: function () { reportFilter = { preset: "all", from: "", to: "" }; renderList(hubCache); }
+        }));
+        return;
+      }
+      // Grouped by incident type, in the order they were last used.
+      var groups = [], byName = {};
+      items.forEach(function (r) {
+        if (!byName[r.name]) { byName[r.name] = []; groups.push(r.name); }
+        byName[r.name].push(r);
       });
+      groups.forEach(function (name) {
+        host.appendChild(el("div", { class: "ain-divider" }, [el("span", { text: name + " · " + byName[name].length })]));
+        byName[name].forEach(function (r) { host.appendChild(reportRow(r)); });
+      });
+    }).catch(function (e) {
+      host.textContent = "";
+      count.textContent = "";
+      host.appendChild(el("div", { class: "asc-empty", text: e.message || "Could not load your reports." }));
     });
   }
 
-  function openDateFilter(active) {
-    var draft = {
-      preset: reportFilter.preset,
-      from: reportFilter.from,
-      to: reportFilter.to
-    };
+  function openDateFilter() {
+    var draft = { preset: reportFilter.preset, from: reportFilter.from, to: reportFilter.to };
 
     var scrim = el("div", { class: "asc-scrim" });
     function close() {
@@ -718,10 +607,7 @@
         var key = pair[0];
         var input = el("input", { class: "ain-input", type: "date", value: draft[key] || "" });
         input.addEventListener("change", function () { draft[key] = input.value; });
-        custom.appendChild(el("label", { class: "ain-datefield" }, [
-          el("span", { class: "ain-label", text: pair[1] }),
-          input
-        ]));
+        custom.appendChild(el("label", { class: "ain-datefield" }, [el("span", { class: "ain-label", text: pair[1] }), input]));
       });
     }
 
@@ -732,10 +618,7 @@
         list.appendChild(el("button", {
           class: "ain-opt", "data-on": String(sel), type: "button",
           onclick: function () { draft.preset = p.value; paint(); paintCustom(); }
-        }, [
-          el("span", {}, [el("div", { text: p.label })]),
-          sel ? el("span", { html: ICON.check }) : null
-        ]));
+        }, [el("span", {}, [el("div", { text: p.label })]), sel ? el("span", { html: ICON.check }) : null]));
       });
     }
     paint();
@@ -748,19 +631,11 @@
       el("div", { class: "asc-actions" }, [
         el("button", {
           class: "asc-btn", "data-kind": "ghost", text: "CLEAR",
-          onclick: function () {
-            reportFilter = { preset: "all", from: "", to: "" };
-            close();
-            renderList(active);
-          }
+          onclick: function () { reportFilter = { preset: "all", from: "", to: "" }; close(); renderList(hubCache); }
         }),
         el("button", {
           class: "asc-btn", "data-kind": "primary", text: "APPLY",
-          onclick: function () {
-            reportFilter = draft;
-            close();
-            renderList(active);
-          }
+          onclick: function () { reportFilter = draft; close(); renderList(hubCache); }
         })
       ])
     ]));
@@ -769,71 +644,93 @@
     setTimeout(function () { scrim.dataset.open = "true"; }, 16);
   }
 
-  function summaryOf(rep, cat) {
-    var fields = (cat && cat.form && cat.form.fields) || [];
-    for (var i = 0; i < fields.length; i++) {
-      if (fields[i].type === "long" && !isBlank(rep.values[fields[i].id])) {
-        return String(rep.values[fields[i].id]);
-      }
-    }
-    return cat ? cat.name : "Incident report";
-  }
-
-  function reportRow(rep, cat) {
+  function reportRow(r) {
+    var chip = chipOf(r.statusLabel);
     return el("button", {
       class: "ain-rep",
-      onclick: function () { push(function () { screenReport(rep, cat); }); }
+      onclick: function () { push(function () { screenReport(r); }); }
     }, [
       el("div", { class: "ain-rep-body" }, [
-        el("div", { class: "ain-rep-ref", text: rep.reference }),
-        el("div", { class: "ain-rep-sum", text: summaryOf(rep, cat) }),
-        el("div", { class: "ain-rep-when", text: when(rep.createdAt) })
+        el("div", { class: "ain-rep-ref", text: referenceOf(r.id, r.submittedAt) + (r.severity ? " · " + cap(r.severity) : "") }),
+        el("div", { class: "ain-rep-sum", text: r.summary || r.name }),
+        el("div", { class: "ain-rep-when", text: when(r.submittedAt) + (r.siteName ? " · " + r.siteName : "") })
       ]),
-      el("span", {
-        class: "ain-sync", "data-state": rep.status,
-        text: rep.status === "pending" ? "PENDING" : "SYNCED"
-      })
+      el("span", { class: "ain-sync", "data-state": chip.state, text: chip.text })
     ]);
   }
 
-  /* ── Screen 2: the admin-authored form ─────────────────────────────────── */
+  function queuedRow(item) {
+    return el("button", {
+      class: "ain-rep",
+      onclick: function () { push(function () { screenQueued(item.idempotencyKey); }); }
+    }, [
+      el("div", { class: "ain-rep-body" }, [
+        el("div", { class: "ain-rep-ref", text: item.typeName + " · " + cap(item.severity) }),
+        el("div", { class: "ain-rep-sum", text: item.error || item.values.description || "Saved on this device" }),
+        el("div", { class: "ain-rep-when", text: when(item.createdAt) })
+      ]),
+      el("span", { class: "ain-sync", "data-state": item.error ? "rejected" : "pending", text: item.error ? "NOT SENT" : "PENDING" })
+    ]);
+  }
 
-  function screenForm(cat) {
-    setHeader(cat.name, cat.code + " · " + cat.severity);
+  /* ── Screen 2: the incident form ───────────────────────────────────────── */
 
-    var values = Store.loadDraft(cat.id) || {};
-    var errors = {};
+  function screenForm(type) {
+    setHeader(type.name, type.code + " · " + cap(type.severity));
+    setFooter(null);
+    loading("Loading the form…");
+    Api.type(type.id).then(function (form) {
+      if (UI.stack[UI.stack.length - 1] && UI.body.querySelector(".asc-spin")) renderForm(type, form);
+    }).catch(function (e) {
+      failed(e, function () { screenForm(type); });
+    });
+  }
+
+  function renderForm(type, form) {
+    var fields = form.fields.map(function (f) {
+      var t = f.type === "photo_high" ? "photo" : f.type;
+      return { key: f.key, type: t, label: f.label, required: f.required, helpText: f.helpText, options: f.options || [], choices: f.choices, supported: f.supported };
+    });
+    var draft = Store.loadDraft(type.id) || {};
+    var values = draft.values || {};
     var restored = Object.keys(values).length > 0;
+    var meta = {
+      siteId: draft.siteId || form.defaultSiteId || (form.sites[0] && form.sites[0].id) || null,
+      severity: draft.severity || form.defaultSeverity || type.severity || "medium"
+    };
+    var errors = {};
 
-    // Pre-fill the moment of the incident with now, which is right far more
-    // often than an empty field the officer has to fill by hand.
-    (cat.form.fields || []).forEach(function (f) {
-      if (f.type === "datetime" && isBlank(values[f.id])) values[f.id] = localDateTimeValue();
+    // The moment of the incident starts at now, which is right far more often
+    // than an empty field the officer has to fill by hand.
+    fields.forEach(function (f) {
+      if (f.type === "datetime" && isBlank(values[f.key])) values[f.key] = localDateTimeValue();
     });
 
-    function persist() { Store.saveDraft(cat.id, values); }
+    function persist() { Store.saveDraft(type.id, { values: values, siteId: meta.siteId, severity: meta.severity }); }
 
     /* Values change WITHOUT a repaint: each control updates itself in place.
        A full repaint here would steal focus mid-keystroke in text fields. */
-    function set(id, v) {
-      values[id] = v;
+    function set(key, v) {
+      values[key] = v;
       persist();
-      if (!errors[id]) return;
-      delete errors[id];
-      var wrap = form.querySelector('[data-field="' + id + '"]');
+      if (!errors[key]) return;
+      delete errors[key];
+      var wrap = formEl.querySelector('[data-field="' + key + '"]');
       if (!wrap) return;
       wrap.dataset.error = "false";
       var msg = wrap.querySelector(".ain-err");
       if (msg) msg.remove();
     }
 
-    var form = el("div", { class: "ain-form" });
+    var formEl = el("div", { class: "ain-form" });
+    var noSite = !form.sites.length;
+    var blocked = !form.mobileReady || noSite;
 
     function paint() {
-      form.textContent = "";
-      (cat.form.fields || []).forEach(function (f) {
-        form.appendChild(renderField(f, values, errors, set));
-      });
+      formEl.textContent = "";
+      formEl.appendChild(severityField(meta, persist));
+      formEl.appendChild(siteField(form, meta, persist));
+      fields.forEach(function (f) { formEl.appendChild(renderField(f, values, errors, set)); });
       UI.body.textContent = "";
       if (!navigator.onLine) {
         UI.body.appendChild(el("div", { class: "ain-offline" }, [
@@ -841,115 +738,151 @@
           el("span", { text: "Offline — this report will be held on your device and sent automatically." })
         ]));
       }
-      UI.body.appendChild(form);
+      if (noSite) UI.body.appendChild(el("div", { class: "ain-offline", text: "You aren't assigned to a site yet, so you can't file an incident. Ask your supervisor to assign you." }));
+      else if (!form.mobileReady) UI.body.appendChild(el("div", { class: "ain-offline", text: "This incident type has to be filed on the web portal (" + form.blockedBy.join(", ") + ")." }));
+      UI.body.appendChild(formEl);
     }
 
-    var submitBtn = el("button", {
-      class: "ain-submit", html: "SUBMIT INCIDENT", onclick: doSubmit
-    });
+    var submitBtn = el("button", { class: "ain-submit", html: "SUBMIT INCIDENT", onclick: doSubmit });
+    if (blocked) submitBtn.disabled = true;
     setFooter(el("div", {}, [
       submitBtn,
-      el("div", {
-        class: "ain-draft",
-        text: restored ? "Draft restored — saved as you type" : "Saved as you type"
-      })
+      el("div", { class: "ain-draft", text: restored ? "Draft restored — saved as you type" : "Saved as you type" })
     ]));
 
     function doSubmit() {
       errors = {};
       var firstBad = null;
-      (cat.form.fields || []).forEach(function (f) {
+      fields.forEach(function (f) {
         if (f.type === "divider") return;
-        if (f.required && isBlank(values[f.id])) {
-          errors[f.id] = f.type === "checkbox" ? "This must be confirmed." : "This field is required.";
-          if (!firstBad) firstBad = f.id;
+        if (f.required && isBlank(values[f.key])) {
+          errors[f.key] = f.type === "checkbox" ? "This must be confirmed." : "This field is required.";
+          if (!firstBad) firstBad = f.key;
         }
       });
-      if (firstBad) {
-        paint();
-        var node = form.querySelector('[data-field="' + firstBad + '"]');
-        if (node) node.scrollIntoView({ behavior: "smooth", block: "center" });
-        toast("Check the highlighted fields.", "err");
-        return;
-      }
+      if (firstBad) { showErrors(firstBad); return; }
 
       submitBtn.disabled = true;
       submitBtn.innerHTML = ICON.spin + " SUBMITTING";
 
-      var report = {
-        id: "R" + Date.now(),
-        reference: Store.nextRef(),
-        categoryId: cat.id,
-        categoryName: cat.name,
-        severity: cat.severity,
+      var item = {
+        idempotencyKey: newKey(),
+        typeId: type.id,
+        typeName: type.name,
+        severity: meta.severity,
+        siteId: meta.siteId,
+        fields: fields.filter(function (f) { return f.type !== "divider"; }).map(function (f) { return { key: f.key, type: f.type, label: f.label }; }),
         values: JSON.parse(JSON.stringify(values)),
-        createdAt: new Date().toISOString(),
-        status: "pending"
+        createdAt: new Date().toISOString()
       };
-      Store.add(report);
-      Store.clearDraft(cat.id);
 
-      Api.submit(report).then(function () {
-        Store.update(report.id, { status: "synced" });
-        report.status = "synced";
-      }).catch(function () {
-        // Offline or server unreachable — it stays queued, which is the point.
-      }).then(function () {
-        replaceTop(function () { screenDone(report, cat); });
+      send(item).then(function (res) {
+        Store.clearDraft(type.id);
+        hubCache = null;
+        refreshHomeTile();
+        replaceTop(function () { screenDone(type, res.submission); });
+      }).catch(function (err) {
+        if (isOffline(err)) {
+          item.queued = true;
+          Store.enqueue(item);
+          Store.clearDraft(type.id);
+          refreshHomeTile();
+          replaceTop(function () { screenSaved(type, item); });
+          return;
+        }
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "SUBMIT INCIDENT";
+        // "What happened?: this field is required" → highlight that field.
+        var hit = fields.filter(function (f) { return (err.message || "").indexOf(f.label + ":") === 0; })[0];
+        if (hit) { errors[hit.key] = err.message.slice(hit.label.length + 1).trim(); showErrors(hit.key); }
+        else toast(err.message || "Could not submit. Try again.", "err");
       });
     }
 
+    function showErrors(firstKey) {
+      paint();
+      var node = formEl.querySelector('[data-field="' + firstKey + '"]');
+      if (node) node.scrollIntoView({ behavior: "smooth", block: "center" });
+      toast("Check the highlighted fields.", "err");
+    }
+
     paint();
+  }
+
+  /* Severity: four chips, starting at the type's. */
+  function severityField(meta, persist) {
+    var row = el("div", { class: "ain-sevpick", role: "radiogroup", "aria-label": "Severity" });
+    function paintChips() {
+      row.textContent = "";
+      SEVERITIES.forEach(function (s) {
+        row.appendChild(el("button", {
+          class: "ain-sev", type: "button", role: "radio", "data-sev": cap(s),
+          "data-on": String(meta.severity === s), "aria-checked": String(meta.severity === s), text: s.toUpperCase(),
+          onclick: function () { meta.severity = s; persist(); paintChips(); }
+        }));
+      });
+    }
+    paintChips();
+    return el("div", { class: "ain-field", "data-field": "__severity" }, [
+      el("div", { class: "ain-label" }, [el("span", { text: "Severity" })]),
+      el("div", { class: "ain-help", text: "Set by the incident type. Change it if this one is more or less serious." }),
+      row
+    ]);
+  }
+
+  /* Site: fixed when the officer works one, a picker when several. */
+  function siteField(form, meta, persist) {
+    var wrap = el("div", { class: "ain-field", "data-field": "__site" }, [el("div", { class: "ain-label" }, [el("span", { text: "Site" })])]);
+    if (!form.sites.length) return wrap;
+    var nameOf = function (id) { var s = form.sites.filter(function (x) { return x.id === id; })[0]; return s ? s.name : ""; };
+    if (form.sites.length === 1) {
+      wrap.appendChild(el("div", { class: "ain-input", "data-readonly": "true", text: form.sites[0].name }));
+      return wrap;
+    }
+    var btn = pickerButton(nameOf(meta.siteId), function () {
+      openPicker("Site", form.sites.map(function (s) { return { value: s.id, label: s.name }; }), meta.siteId, false, function (picked) {
+        meta.siteId = picked; persist(); btn.setLabel(nameOf(picked));
+      });
+    });
+    wrap.appendChild(btn);
+    return wrap;
   }
 
   /* ── Field renderers ───────────────────────────────────────────────────── */
 
   function renderField(f, values, errors, set) {
     if (f.type === "divider") {
-      return el("div", { class: "ain-divider", "data-field": f.id }, [
-        el("span", { text: f.label || "" })
-      ]);
+      return el("div", { class: "ain-divider", "data-field": f.key }, [el("span", { text: f.label || "" })]);
     }
-
-    var control = buildControl(f, values, set);
-    var wrap = el("div", {
-      class: "ain-field", "data-field": f.id, "data-error": String(!!errors[f.id])
-    }, [
+    return el("div", { class: "ain-field", "data-field": f.key, "data-error": String(!!errors[f.key]) }, [
       el("div", { class: "ain-label" }, [
         el("span", { text: f.label }),
         f.required ? el("span", { class: "ain-req", text: "*" }) : null
       ]),
       f.helpText ? el("div", { class: "ain-help", text: f.helpText }) : null,
-      control,
-      errors[f.id] ? el("div", { class: "ain-err" }, [
-        el("span", { html: ICON.alert }), el("span", { text: errors[f.id] })
-      ]) : null
+      buildControl(f, values, set),
+      errors[f.key] ? el("div", { class: "ain-err" }, [el("span", { html: ICON.alert }), el("span", { text: errors[f.key] })]) : null
     ]);
-    return wrap;
   }
 
   function buildControl(f, values, set) {
-    var v = values[f.id];
+    var v = values[f.key];
 
     switch (f.type) {
       case "short":
         return el("input", {
-          class: "ain-input", type: "text", value: v || "",
-          placeholder: f.placeholder || "",
-          oninput: function (e) { set(f.id, e.target.value); }
+          class: "ain-input", type: "text", maxlength: "500", value: v || "",
+          oninput: function (e) { set(f.key, e.target.value); }
         });
 
       case "number":
         return el("input", {
-          class: "ain-input", type: "number", inputmode: "decimal", value: v || "",
-          oninput: function (e) { set(f.id, e.target.value); }
+          class: "ain-input", type: "number", inputmode: "decimal", value: v == null ? "" : v,
+          oninput: function (e) { set(f.key, e.target.value); }
         });
 
       case "long":
-        var ta = el("textarea", {
-          class: "ain-textarea", placeholder: f.placeholder || "",
-          oninput: function (e) { set(f.id, e.target.value); }
-        });
+        var ta = el("textarea", { class: "ain-textarea", maxlength: "5000", oninput: function (e) { set(f.key, e.target.value); } });
         ta.value = v || "";   // textarea takes its value as content, not an attribute
         return ta;
 
@@ -957,61 +890,55 @@
       case "time":
       case "datetime":
         return el("input", {
-          class: "ain-input",
-          type: f.type === "datetime" ? "datetime-local" : f.type,
-          value: v || "",
-          oninput: function (e) { set(f.id, e.target.value); }
+          class: "ain-input", type: f.type === "datetime" ? "datetime-local" : f.type, value: v || "",
+          max: f.type === "datetime" ? localDateTimeValue() : null,
+          oninput: function (e) { set(f.key, e.target.value); }
         });
 
       case "checkbox": {
-        var cb = el("div", {
-          class: "ain-check", "data-on": String(!!v), role: "checkbox",
-          tabindex: "0", "aria-checked": String(!!v)
-        }, [
+        var cb = el("div", { class: "ain-check", "data-on": String(!!v), role: "checkbox", tabindex: "0", "aria-checked": String(!!v) }, [
           el("span", { class: "ain-box", html: ICON.check }),
           el("span", { text: f.label })
         ]);
         var toggle = function () {
-          var nv = !values[f.id];
-          set(f.id, nv);
+          var nv = !values[f.key];
+          set(f.key, nv);
           cb.dataset.on = String(nv);
           cb.setAttribute("aria-checked", String(nv));
         };
         cb.addEventListener("click", toggle);
-        cb.addEventListener("keydown", function (e) {
-          if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle(); }
-        });
+        cb.addEventListener("keydown", function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle(); } });
         return cb;
       }
 
       case "single": {
-        var bSingle = pickerButton(f, v || "", function () {
-          openPicker(f.label, (f.options || []).map(function (o) { return { value: o }; }),
-            values[f.id], false, function (picked) {
-              set(f.id, picked); bSingle.setLabel(picked);
-            });
+        var bSingle = pickerButton(v || "", function () {
+          openPicker(f.label, f.options.map(function (o) { return { value: o }; }), values[f.key], false, function (picked) {
+            set(f.key, picked); bSingle.setLabel(picked);
+          });
         });
         return bSingle;
       }
 
       case "multi": {
         var cur = v || [];
-        var bMulti = pickerButton(f, cur.length ? cur.join(", ") : "", function () {
-          openPicker(f.label, (f.options || []).map(function (o) { return { value: o }; }),
-            values[f.id] || [], true, function (picked) {
-              set(f.id, picked); bMulti.setLabel(picked.length ? picked.join(", ") : "");
-            });
+        var bMulti = pickerButton(cur.length ? cur.join(", ") : "", function () {
+          openPicker(f.label, f.options.map(function (o) { return { value: o }; }), values[f.key] || [], true, function (picked) {
+            set(f.key, picked); bMulti.setLabel(picked.length ? picked.join(", ") : "");
+          });
         });
         return bMulti;
       }
 
-      case "site": {
-        var bSite = pickerButton(f, v || "", function () {
-          openPicker(f.label, siteOptions(), values[f.id], false, function (picked) {
-            set(f.id, picked); bSite.setLabel(picked);
-          });
+      // Pickers whose choices come from the system: an admin "site" or "incident" field.
+      case "site":
+      case "incident": {
+        var choices = (f.choices || []).map(function (c) { return { value: c.id, label: c.name }; });
+        var nameOf = function (id) { var c = choices.filter(function (x) { return x.value === id; })[0]; return c ? c.label : ""; };
+        var bPick = pickerButton(nameOf(v), function () {
+          openPicker(f.label, choices, values[f.key], false, function (picked) { set(f.key, picked); bPick.setLabel(nameOf(picked)); });
         });
-        return bSite;
+        return bPick;
       }
 
       case "photo":
@@ -1019,22 +946,17 @@
         return photoField(f, values, set);
 
       default:
-        // An admin published a field type this build does not render yet.
-        // Say so plainly rather than dropping it from the form silently.
+        // A field type this build cannot capture. Say so rather than dropping it.
         return el("div", {
           class: "ain-offline",
-          text: '"' + f.label + '" uses the ' + f.type +
-                " field type, which this app version cannot capture yet. " +
-                "Record it in a description field for now."
+          text: '"' + f.label + '" can only be filled on the web portal. Record it in a description field for now.'
         });
     }
   }
 
-  function pickerButton(f, label, onOpen) {
+  function pickerButton(label, onOpen) {
     var text = el("span", { text: label || "Select…" });
-    var btn = el("button", {
-      class: "ain-picker", "data-empty": String(!label), type: "button", onclick: onOpen
-    }, [text, el("span", { html: ICON.down })]);
+    var btn = el("button", { class: "ain-picker", "data-empty": String(!label), type: "button", onclick: onOpen }, [text, el("span", { html: ICON.down })]);
     btn.setLabel = function (v) {
       text.textContent = v || "Select…";
       btn.dataset.empty = String(!v);
@@ -1043,53 +965,55 @@
   }
 
   function photoField(f, values, set) {
-    var fromGallery = f.type === "photo_gallery";
+    var single = f.type === "photo";
+    var max = single ? 1 : CONFIG.maxPhotos;
     var host = el("div", { class: "ain-photos" });
 
     var input = el("input", {
-      type: "file", accept: "image/*", multiple: "", hidden: "",
+      type: "file", accept: "image/*", hidden: "",
       onchange: function (e) {
         var files = [].slice.call(e.target.files || []);
-        var list = values[f.id] || [];
-        var room = CONFIG.maxPhotos - list.length;
+        var list = values[f.key] || [];
+        var room = max - list.length;
         if (files.length > room) {
-          toast("You can attach up to " + CONFIG.maxPhotos + " photos.", "err");
+          toast("You can attach up to " + max + (max === 1 ? " photo." : " photos."), "err");
           files = files.slice(0, Math.max(0, room));
         }
-        Promise.all(files.map(function (file) { return shrink(file, 900, 0.7); }))
-          .then(function (urls) { set(f.id, list.concat(urls)); paintPhotos(); })
+        Promise.all(files.map(function (file) { return shrink(file, 1280, 0.75); }))
+          .then(function (urls) { set(f.key, list.concat(urls)); paintPhotos(); })
           .catch(function (err) { toast(err.message, "err"); });
         e.target.value = "";
       }
     });
-    // Camera capture for "photo"; the gallery variant opens the picker instead.
-    if (!fromGallery) input.setAttribute("capture", "environment");
+    if (!single) input.setAttribute("multiple", "");
+    // A single photo opens the camera; a gallery field lets the officer pick from the device.
+    if (single) input.setAttribute("capture", "environment");
 
     function paintPhotos() {
-      var list = values[f.id] || [];
+      var list = values[f.key] || [];
       host.textContent = "";
       if (list.length) {
         host.appendChild(el("div", { class: "ain-thumbs" }, list.map(function (src, i) {
           return el("div", { class: "ain-thumb" }, [
             el("img", { src: src, alt: f.label + " " + (i + 1) }),
             el("button", {
-              class: "ain-thumb-x", type: "button",
-              "aria-label": "Remove photo " + (i + 1), html: ICON.x,
+              class: "ain-thumb-x", type: "button", "aria-label": "Remove photo " + (i + 1), html: ICON.x,
               onclick: function (e) {
                 e.stopPropagation();
-                set(f.id, (values[f.id] || []).filter(function (_, j) { return j !== i; }));
+                set(f.key, (values[f.key] || []).filter(function (_, j) { return j !== i; }));
                 paintPhotos();
               }
             })
           ]);
         })));
       }
-      host.appendChild(el("button", {
-        class: "ain-addphoto", type: "button",
-        html: (fromGallery ? ICON.img : ICON.cam) +
-              "<span>" + (fromGallery ? "CHOOSE PHOTOS" : "TAKE PHOTO") + "</span>",
-        onclick: function () { input.click(); }
-      }));
+      if (list.length < max) {
+        host.appendChild(el("button", {
+          class: "ain-addphoto", type: "button",
+          html: (single ? ICON.cam : ICON.img) + "<span>" + (single ? "TAKE PHOTO" : "ADD PHOTOS") + "</span>",
+          onclick: function () { input.click(); }
+        }));
+      }
       host.appendChild(input);
     }
 
@@ -1128,7 +1052,7 @@
           }
         }, [
           el("span", {}, [
-            el("div", { text: opt.value }),
+            el("div", { text: opt.label || opt.value }),
             opt.sub ? el("div", { class: "ain-opt-sub", text: opt.sub }) : null
           ]),
           on ? el("span", { html: ICON.check }) : null
@@ -1142,10 +1066,7 @@
       list,
       el("div", { class: "asc-actions" }, [
         el("button", { class: "asc-btn", "data-kind": "ghost", text: "CANCEL", onclick: close }),
-        multi ? el("button", {
-          class: "asc-btn", "data-kind": "primary", text: "DONE",
-          onclick: function () { done(chosen); close(); }
-        }) : null
+        multi ? el("button", { class: "asc-btn", "data-kind": "primary", text: "DONE", onclick: function () { done(chosen); close(); } }) : null
       ])
     ]));
 
@@ -1153,122 +1074,163 @@
     setTimeout(function () { scrim.dataset.open = "true"; }, 16);
   }
 
-  /* ── Screen 3: confirmation / read-only report ─────────────────────────── */
+  /* ── Screen 3: confirmation, filed report, queued report ───────────────── */
 
-  function screenDone(rep, cat) {
-    setHeader(cat.name, rep.reference);
+  function doneFooter() {
     setFooter(el("button", {
       class: "ain-submit", text: "DONE",
-      onclick: function () { UI.stack = []; push(screenList); }
+      onclick: function () { UI.stack = []; listTab = "mine"; push(screenList); }
     }));
+  }
 
+  function screenDone(type, sub) {
+    var ref = referenceOf(sub.id, sub.submittedAt);
+    setHeader(type.name, ref);
+    doneFooter();
     UI.body.textContent = "";
-    var pending = rep.status === "pending";
+    var review = sub.statusLabel === "Manager review";
     UI.body.appendChild(el("div", { class: "ain-done" }, [
-      el("div", { class: "ain-done-ico", "data-state": rep.status, html: pending ? ICON.cloud : ICON.done }),
-      el("div", { class: "ain-done-title", text: pending ? "Report saved" : "Report submitted" }),
+      el("div", { class: "ain-done-ico", "data-state": "synced", html: ICON.done }),
+      el("div", { class: "ain-done-title", text: "Incident reported" }),
       el("div", {
         class: "ain-done-sub",
-        text: pending
-          ? "You're offline. This report is stored on your device and will send by itself once you reconnect."
-          : "Your report has been sent to the operations team."
+        text: "Your supervisors and the operations team have been alerted." + (review ? " A manager will review the report." : "")
       }),
-      el("div", { class: "ain-done-ref", text: rep.reference })
+      el("div", { class: "ain-done-ref", text: ref })
     ]));
-
     UI.body.appendChild(el("div", { class: "asc-section", text: "WHAT YOU SUBMITTED" }));
-    UI.body.appendChild(answers(rep, cat));
+    UI.body.appendChild(submittedAnswers(sub));
   }
 
-  function screenReport(rep, cat) {
-    setHeader(rep.reference, cat ? cat.name : "Incident report");
-    setFooter(null);
+  function screenSaved(type, item) {
+    setHeader(type.name, "Waiting to send");
+    doneFooter();
     UI.body.textContent = "";
-
-    UI.body.appendChild(el("div", { class: "aop-group" }, [
-      el("div", { class: "ain-ans" }, [
-        el("div", { class: "ain-ans-l", text: "Status" }),
-        el("div", {}, [
-          el("span", {
-            class: "ain-sync", "data-state": rep.status,
-            text: rep.status === "pending" ? "PENDING SYNC" : "SYNCED"
-          })
-        ])
-      ]),
-      el("div", { class: "ain-ans" }, [
-        el("div", { class: "ain-ans-l", text: "Filed" }),
-        el("div", { class: "ain-ans-v", text: when(rep.createdAt) })
-      ])
+    UI.body.appendChild(el("div", { class: "ain-done" }, [
+      el("div", { class: "ain-done-ico", "data-state": "pending", html: ICON.cloud }),
+      el("div", { class: "ain-done-title", text: "Report saved" }),
+      el("div", { class: "ain-done-sub", text: "No connection right now. This report is stored on your device and will send by itself once you reconnect." })
     ]));
-
-    UI.body.appendChild(el("div", { class: "asc-section", text: "REPORT" }));
-    UI.body.appendChild(answers(rep, cat));
+    UI.body.appendChild(el("div", { class: "asc-section", text: "WHAT YOU FILLED IN" }));
+    UI.body.appendChild(localAnswers(item));
   }
 
-  function answers(rep, cat) {
-    var fields = (cat && cat.form && cat.form.fields) || [];
+  function screenQueued(key) {
+    var item = Store.queue().filter(function (q) { return q.idempotencyKey === key; })[0];
+    if (!item) { goBack(); return; }
+    setHeader(item.typeName, item.error ? "Not sent" : "Waiting to send");
+    var sendBtn = el("button", {
+      class: "ain-submit", text: "SEND NOW",
+      onclick: function () {
+        sendBtn.disabled = true;
+        sendBtn.innerHTML = ICON.spin + " SENDING";
+        send(item).then(function (res) {
+          Store.dequeue(key);
+          refreshHomeTile();
+          replaceTop(function () { screenDone({ name: item.typeName }, res.submission); });
+        }).catch(function (err) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = "SEND NOW";
+          if (!isOffline(err)) Store.update(key, { error: err.message });
+          toast(isOffline(err) ? "Still no connection. It will send when you're back online." : err.message, "err");
+        });
+      }
+    });
+    setFooter(el("div", {}, [
+      sendBtn,
+      el("button", {
+        class: "asc-btn", "data-kind": "ghost", text: "DISCARD REPORT",
+        onclick: function () { Store.dequeue(key); refreshHomeTile(); goBack(); }
+      })
+    ]));
+    UI.body.textContent = "";
+    UI.body.appendChild(el("div", { class: "ain-offline", text: item.error ? "The server didn't accept this report: " + item.error : "Saved " + when(item.createdAt) + ". It sends by itself when you're back online." }));
+    UI.body.appendChild(el("div", { class: "asc-section", text: "REPORT" }));
+    UI.body.appendChild(localAnswers(item));
+  }
+
+  function screenReport(r) {
+    setHeader(referenceOf(r.id, r.submittedAt), r.name);
+    setFooter(null);
+    loading("Loading the report…");
+    Api.submission(r.id).then(function (sub) {
+      UI.body.textContent = "";
+      var chip = chipOf(sub.statusLabel);
+      var rows = [
+        ["Status", el("span", { class: "ain-sync", "data-state": chip.state, text: chip.text })],
+        ["Severity", sub.severity ? el("span", { class: "ain-sev", "data-sev": cap(sub.severity), text: sub.severity.toUpperCase() }) : null],
+        ["Site", sub.site ? sub.site.name : null],
+        ["Filed", when(sub.submittedAt)]
+      ];
+      if (sub.rejectedReason) rows.push(["Reason", sub.rejectedReason]);
+      UI.body.appendChild(el("div", { class: "aop-group" }, rows.filter(function (x) { return x[1]; }).map(function (x) {
+        return el("div", { class: "ain-ans" }, [
+          el("div", { class: "ain-ans-l", text: x[0] }),
+          typeof x[1] === "string" ? el("div", { class: "ain-ans-v", text: x[1] }) : el("div", {}, [x[1]])
+        ]);
+      })));
+      UI.body.appendChild(el("div", { class: "asc-section", text: "REPORT" }));
+      UI.body.appendChild(submittedAnswers(sub));
+    }).catch(function (e) {
+      failed(e, function () { screenReport(r); });
+    });
+  }
+
+  function answerText(type, v) {
+    if (v == null || v === "") return "";
+    if (type === "checkbox") return v ? "Yes" : "No";
+    if (Array.isArray(v)) return v.join(", ");
+    if (typeof v === "object") return v.name || v.id || "";
+    if (type === "datetime") return when(v);
+    return String(v);
+  }
+
+  /* A filed report, as the server returns it. */
+  function submittedAnswers(sub) {
     var group = el("div", { class: "aop-group" });
+    if (!sub.items.length) group.appendChild(el("div", { class: "ain-ans" }, [el("div", { class: "ain-ans-v", "data-empty": "true", text: "No answers" })]));
+    sub.items.forEach(function (item) {
+      if (item.photos && item.photos.length) {
+        var thumbs = el("div", { class: "ain-thumbs" });
+        item.photos.forEach(function (ref, i) {
+          var img = el("img", { alt: item.label + " " + (i + 1) });
+          Api.photo(ref).then(function (blob) { if (blob) img.src = URL.createObjectURL(blob); }).catch(function () {});
+          thumbs.appendChild(el("div", { class: "ain-thumb" }, [img]));
+        });
+        group.appendChild(el("div", { class: "ain-ans" }, [el("div", { class: "ain-ans-l", text: item.label }), thumbs]));
+        return;
+      }
+      var text = answerText(item.type, item.value);
+      group.appendChild(el("div", { class: "ain-ans" }, [
+        el("div", { class: "ain-ans-l", text: item.label }),
+        el("div", { class: "ain-ans-v", "data-empty": String(isBlank(text)), text: isBlank(text) ? "Not answered" : text })
+      ]));
+    });
+    return group;
+  }
 
-    fields.forEach(function (f) {
-      if (f.type === "divider") return;
-      var v = rep.values[f.id];
-
-      if (f.type === "photo" || f.type === "photo_gallery") {
+  /* A report still on the device. */
+  function localAnswers(item) {
+    var group = el("div", { class: "aop-group" });
+    item.fields.forEach(function (f) {
+      var v = item.values[f.key];
+      if (isPhotoType(f.type)) {
         group.appendChild(el("div", { class: "ain-ans" }, [
           el("div", { class: "ain-ans-l", text: f.label }),
           (v && v.length)
-            ? el("div", { class: "ain-thumbs" }, v.map(function (src, i) {
-                return el("div", { class: "ain-thumb" }, [
-                  el("img", { src: src, alt: f.label + " " + (i + 1) })
-                ]);
-              }))
+            ? el("div", { class: "ain-thumbs" }, v.map(function (src, i) { return el("div", { class: "ain-thumb" }, [el("img", { src: src, alt: f.label + " " + (i + 1) })]); }))
             : el("div", { class: "ain-ans-v", "data-empty": "true", text: "None attached" })
         ]));
         return;
       }
-
-      var text;
-      if (f.type === "checkbox") text = v ? "Yes" : "No";
-      else if (Array.isArray(v)) text = v.join(", ");
-      else if (f.type === "datetime" && v) text = when(v);
-      else text = v == null ? "" : String(v);
-
+      var text = answerText(f.type, v);
       group.appendChild(el("div", { class: "ain-ans" }, [
         el("div", { class: "ain-ans-l", text: f.label }),
-        el("div", {
-          class: "ain-ans-v", "data-empty": String(isBlank(text)),
-          text: isBlank(text) ? "Not answered" : text
-        })
+        el("div", { class: "ain-ans-v", "data-empty": String(isBlank(text)), text: isBlank(text) ? "Not answered" : text })
       ]));
     });
-
     return group;
   }
-
-  /* ── Offline queue ─────────────────────────────────────────────────────── */
-
-  function flushQueue() {
-    var pending = Store.all().filter(function (r) {
-      return r.status === "pending" && !r.demo;   // demo rows keep their state
-    });
-    if (!pending.length || !navigator.onLine) return;
-
-    var sent = 0;
-    Promise.all(pending.map(function (rep) {
-      return Api.submit(rep).then(function () {
-        Store.update(rep.id, { status: "synced" });
-        sent++;
-      }).catch(function () { /* still unreachable — leave queued */ });
-    })).then(function () {
-      if (!sent) return;
-      if (UI.overlay && UI.overlay.dataset.open === "true") {
-        toast(sent + (sent === 1 ? " report" : " reports") + " sent.", "ok");
-        if (UI.stack.length === 1) UI.stack[0]();
-      }
-    });
-  }
-
-  window.addEventListener("online", flushQueue);
 
   /* ── Navigation ────────────────────────────────────────────────────────── */
 
@@ -1288,7 +1250,6 @@
   }
 
   function open() {
-    Store.seedOnce();
     build();
     syncRect();
     UI.stack = [];
@@ -1297,39 +1258,76 @@
     flushQueue();
   }
 
-  /* ── Home tile intercept ───────────────────────────────────────────────────
+  /* ── Home tile ─────────────────────────────────────────────────────────────
    * In the shipped bundle this tile navigates to the Chat screen. Catch the
    * click during the capture phase, before React's handler runs, and open the
-   * incidents module instead.
+   * incidents module instead. Its subtitle shows what needs the officer.
    * ------------------------------------------------------------------------ */
 
-  function isIncidentTile(node) {
-    while (node && node !== document.body) {
-      if (node.nodeType === 1 && node.textContent.replace(/\s+/g, "") === "IncidentsActiveLogs") return true;
-      node = node.parentElement;
+  var DEFAULT_SUB = "Active Logs";
+  var homeTileText = null;
+
+  function tileTitle() {
+    var leaves = document.querySelectorAll("#root div");
+    for (var i = 0; i < leaves.length; i++) {
+      var n = leaves[i];
+      if (n.childElementCount === 0 && n.textContent.trim() === "Incidents" && n.nextElementSibling) return n;
     }
-    return false;
+    return null;
+  }
+
+  function isIncidentTile(node) {
+    var title = tileTitle();
+    if (!title) return false;
+    var tile = title.parentElement;
+    // The tile is the title's nearest ancestor that also holds the icon; any short text block holding the title counts.
+    while (tile && tile.parentElement && tile.parentElement.textContent.trim().length < 40 && tile.parentElement.id !== "root") tile = tile.parentElement;
+    return !!tile && tile.contains(node);
+  }
+
+  function paintHomeTile(hub) {
+    if (hub) {
+      var waiting = Store.queue().length;
+      var review = hub.recent.filter(function (r) { return r.statusLabel === "Manager review"; }).length;
+      homeTileText = waiting ? waiting + " waiting to send" : review ? review + " in review" : DEFAULT_SUB;
+    }
+    if (!homeTileText) return;
+    var title = tileTitle();
+    if (title && title.nextElementSibling.textContent !== homeTileText) title.nextElementSibling.textContent = homeTileText;
+  }
+
+  function refreshHomeTile() {
+    if (!signedIn()) return;
+    Api.hub().then(function (hub) { hubCache = hub; paintHomeTile(hub); }).catch(function () { /* keep the last text */ });
   }
 
   document.addEventListener("click", function (e) {
-    if (!isIncidentTile(e.target)) return;
+    if (!e.target.closest || !e.target.closest("#root") || !isIncidentTile(e.target)) return;
     e.preventDefault();
     e.stopPropagation();
     open();
   }, true);
 
+  function start() {
+    var root = document.getElementById("root");
+    if (!root) { setTimeout(start, 300); return; }
+    var pending = false;
+    new MutationObserver(function () {
+      if (pending) return;
+      pending = true;
+      setTimeout(function () { pending = false; paintHomeTile(); }, 80);
+    }).observe(root, { childList: true, subtree: true, characterData: true });
+    setTimeout(function () { refreshHomeTile(); flushQueue(); }, 2400);
+    setInterval(refreshHomeTile, 5 * 60 * 1000);
+  }
+
   window.AlexiosIncidents = {
-    configure: function (o) { Object.assign(CONFIG, o || {}); return CONFIG; },
     open: open,
     flush: flushQueue,
-    clearDemoReports: function () { Store.clearDemo(); },
-    reset: function () {
-      try {
-        Object.keys(localStorage)
-          .filter(function (k) { return k.indexOf("alexios.incidents.") === 0; })
-          .forEach(function (k) { localStorage.removeItem(k); });
-      } catch (e) {}
-    },
+    queue: function () { return Store.queue(); },
     config: CONFIG
   };
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+  else start();
 })();

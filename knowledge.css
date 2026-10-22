@@ -1,0 +1,95 @@
+/* ALEXIOS Mobile — Knowledge Center (real data)
+   Folder grid, search, document rows and the document sheet. Same glass
+   surfaces and fonts as the rest of the app. */
+
+.akc-panel { position: relative; display: flex; flex-direction: column; gap: 14px; padding-top: 6px; font-family: "Inter", sans-serif; }
+
+/* ── Acknowledgement banner ─────────────────────────────── */
+.akc-alert {
+  display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 12px 14px; border-radius: 14px; cursor: pointer; text-align: left;
+  background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.4); color: #fde68a; font: 13px/1.45 "Inter", sans-serif;
+}
+.akc-alert svg { flex-shrink: 0; margin-top: 2px; color: #fbbf24; }
+.akc-alert b { color: #fff; font-weight: 600; }
+
+/* ── Folders ────────────────────────────────────────────── */
+.akc-folders { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.akc-folder {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 16px; border-radius: 20px; cursor: pointer; text-align: left; color: #fff;
+  background: var(--glass-surface, rgba(10,16,28,.8)); border: 1px solid var(--muted-border, rgba(255,255,255,.1));
+}
+.akc-folder-icon { color: #fff; margin-bottom: 6px; }
+.akc-folder b { font: 700 16px/1.25 "Rajdhani", "Inter", sans-serif; letter-spacing: .02em; }
+.akc-folder span { color: rgba(255,255,255,.5); font-size: 13px; }
+.akc-folder[aria-pressed="true"] { background: linear-gradient(160deg, rgba(14,165,233,.22), rgba(14,165,233,.06)); border-color: rgba(56,189,248,.7); box-shadow: 0 0 18px rgba(14,165,233,.18); }
+.akc-folder[aria-pressed="true"] .akc-folder-icon, .akc-folder[aria-pressed="true"] b { color: #38bdf8; }
+.akc-badge {
+  position: absolute; top: 12px; right: 12px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: #f59e0b; color: #1a1005; font: 800 11px "Inter", sans-serif; font-style: normal; display: grid; place-items: center;
+}
+
+/* ── Search + list ──────────────────────────────────────── */
+.akc-search {
+  display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 16px; color: rgba(255,255,255,.5);
+  background: var(--glass-surface, rgba(10,16,28,.8)); border: 1px solid var(--muted-border, rgba(255,255,255,.1));
+}
+.akc-search input { flex: 1; min-width: 0; padding: 13px 0; border: 0; background: none; color: #fff; font: 15px "Inter", sans-serif; outline: none; }
+.akc-search input::placeholder { color: rgba(255,255,255,.45); }
+.akc-search:focus-within { border-color: rgba(56,189,248,.5); }
+.akc-label { margin-top: 4px; color: rgba(255,255,255,.55); font: 700 13px "Rajdhani", sans-serif; letter-spacing: .18em; }
+.akc-list { display: flex; flex-direction: column; gap: 12px; }
+.akc-doc {
+  display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px; border-radius: 18px; cursor: pointer; text-align: left; color: #fff;
+  background: var(--glass-surface, rgba(10,16,28,.8)); border: 1px solid var(--muted-border, rgba(255,255,255,.1));
+}
+.akc-doc[data-ack="true"] { border-color: rgba(245,158,11,.45); }
+.akc-doc-icon { width: 46px; height: 46px; flex-shrink: 0; border-radius: 12px; display: grid; place-items: center; color: #38bdf8; background: rgba(14,165,233,.12); }
+.akc-doc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.akc-doc-main b { font-size: 16px; font-weight: 600; line-height: 1.3; }
+.akc-doc-main > span { color: rgba(255,255,255,.45); font-size: 13px; }
+.akc-chip { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; margin-top: 2px; padding: 3px 9px; border-radius: 999px; font: 600 11px "Inter", sans-serif; font-style: normal; }
+.akc-chip[data-tone="warn"] { background: rgba(245,158,11,.14); color: #fbbf24; }
+.akc-chip[data-tone="ok"] { background: rgba(34,197,94,.12); color: #4ade80; }
+.akc-chev { flex-shrink: 0; color: rgba(255,255,255,.35); font-size: 24px; line-height: 1; }
+
+/* ── Empty / loading ────────────────────────────────────── */
+.akc-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 26px 16px; text-align: center; color: rgba(255,255,255,.55); font-size: 13px; border-radius: 18px; border: 1px dashed rgba(255,255,255,.12); }
+.akc-empty b { color: #fff; font-size: 15px; }
+.akc-spinner { width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(56,189,248,.25); border-top-color: #38bdf8; animation: akc-spin .8s linear infinite; }
+@keyframes akc-spin { to { transform: rotate(360deg); } }
+.akc-refreshing { position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, #38bdf8, transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: akc-bar 1s linear infinite; }
+@keyframes akc-bar { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+
+/* ── Document sheet ─────────────────────────────────────── */
+.akc-sheet-backdrop { position: fixed; inset: 0; z-index: 9000; background: rgba(2,6,15,.6); backdrop-filter: blur(4px); display: flex; align-items: flex-end; justify-content: center; }
+.akc-sheet {
+  width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; padding: 10px 20px 28px; border-radius: 24px 24px 0 0;
+  background: #0b1424; border: 1px solid rgba(255,255,255,.08); border-bottom: 0;
+  display: flex; flex-direction: column; gap: 12px; font-family: "Inter", sans-serif; color: #fff;
+}
+.akc-grip { align-self: center; width: 40px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.2); }
+.akc-sheet-title { font-size: 18px; font-weight: 700; line-height: 1.3; }
+.akc-sheet-sub { margin-top: -6px; color: #7dd3fc; font: 12px "DM Mono", monospace; }
+.akc-note { padding: 11px 13px; border-radius: 12px; font-size: 13px; line-height: 1.45; }
+.akc-note[data-tone="warn"] { background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.35); color: #fde68a; }
+.akc-note[data-tone="ok"] { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.3); color: #bbf7d0; }
+.akc-desc { margin: 0; color: rgba(255,255,255,.7); font-size: 14px; line-height: 1.5; }
+.akc-rows { display: flex; flex-direction: column; border-radius: 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.07); }
+.akc-kv { display: flex; justify-content: space-between; gap: 12px; padding: 11px 14px; background: rgba(255,255,255,.03); }
+.akc-kv + .akc-kv { border-top: 1px solid rgba(255,255,255,.06); }
+.akc-kv span { color: rgba(255,255,255,.55); font-size: 13px; }
+.akc-kv b { font-size: 13px; font-weight: 600; text-align: right; }
+.akc-actions { display: flex; flex-direction: column; gap: 10px; }
+.akc-btn { width: 100%; padding: 14px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: #fff; font: 600 14px "Inter", sans-serif; }
+.akc-btn[data-primary="true"] { background: var(--blue-primary, #0ea5e9); border-color: transparent; }
+.akc-btn:disabled { opacity: .45; cursor: default; }
+.akc-hint { margin-top: -4px; color: rgba(255,255,255,.5); font-size: 12px; text-align: center; }
+.akc-close { margin-top: 2px; }
+
+.akc-toast {
+  position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); z-index: 9100; max-width: calc(100% - 48px);
+  padding: 10px 16px; border-radius: 12px; background: #0f1d33; border: 1px solid rgba(56,189,248,.35);
+  color: #fff; font: 500 13px "Inter", sans-serif; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+}
+
+@media (prefers-reduced-motion: reduce) { .akc-spinner, .akc-refreshing { animation: none; } }

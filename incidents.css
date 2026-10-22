@@ -408,3 +408,25 @@
 .ain-datefield .ain-input { width: 100%; }
 /* Dark-scheme the native date picker indicator */
 .ain-datefield input[type="date"] { color-scheme: dark; }
+
+/* ── Real-data additions ────────────────────────────────── */
+/* Server states on the report chip. */
+.ain-sync[data-state="review"]   { color: #7dd3fc; background: rgba(56,189,248,.1); border-color: rgba(56,189,248,.28); }
+.ain-sync[data-state="rejected"] { color: #fca5a5; background: rgba(220,38,38,.12); border-color: rgba(220,38,38,.32); }
+
+/* Severity picker: the same chips as the type list, as four buttons. */
+.ain-sevpick { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.ain-sevpick .ain-sev {
+  display: flex; align-items: center; justify-content: center; padding: 9px 0; cursor: pointer; font-size: 10px;
+  opacity: .45; filter: saturate(.6); transition: opacity .15s, filter .15s, box-shadow .15s;
+}
+.ain-sevpick .ain-sev[data-on="true"] { opacity: 1; filter: none; box-shadow: 0 0 0 1px currentColor inset; }
+.ain-sevpick .ain-sev:focus-visible { outline: 2px solid var(--blue-bright,#38bdf8); outline-offset: 2px; }
+
+/* The officer's only site, shown rather than picked. */
+.ain-input[data-readonly="true"] { display: flex; align-items: center; color: var(--text-70,#ffffffb3); cursor: default; }
+
+/* A type that needs the web portal. */
+.ain-type[data-locked="true"] { opacity: .55; }
+
+.ain-replist { display: flex; flex-direction: column; gap: inherit; }
